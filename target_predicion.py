@@ -33,8 +33,8 @@ class FP:
 
 
 class GetActivities(luigi.Task):
-    value = luigi.IntParameter()
 
+    value = luigi.IntParameter()
     final_cols = ['MOLREGNO', 'TID', 'SMILES', 'PREF_NAME', 'CHEMBL_ID', 'TARGET_PREF_NAME', 'TARGET_CHEMBL_ID', 'TARGET_ACCESSION']
 
     def requires(self):
@@ -114,9 +114,9 @@ class GetActivities(luigi.Task):
 
 
 class GetDrugs(luigi.Task):
+
     final_cols = ['PARENT_MOLREGNO', 'CHEMBL_ID', 'SYNONYMS', 'RESEARCH_CODES', 'OB_PATENT_NO',
                   'SC_PATENT_NO', 'CANONICAL_SMILES']
-
 
     def requires(self):
         return []
@@ -148,7 +148,6 @@ class GetDrugs(luigi.Task):
         df.rename(columns={'molregno': 'PARENT_MOLREGNO',
                            'chembl_id': 'CHEMBL_ID',
                            'compoundstructures__canonical_smiles': 'CANONICAL_SMILES'}, inplace=True)
-
 
         df2 = df[self.final_cols]
         df2.to_csv('chembl_drugs.csv', index=False, quoting=csv.QUOTE_NONNUMERIC)
