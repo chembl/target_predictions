@@ -2,8 +2,6 @@ import csv
 import os
 import sys
 from collections import OrderedDict
-
-import cx_Oracle
 import luigi
 import numpy
 import pandas as pd
@@ -16,11 +14,15 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import MultiLabelBinarizer
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'deploy')))
+#sys.path.append(os.path.abspath(os.path.join(os.getcwd(), 'deploy', 'deploy')))
+
 import settings
 from django.core.management import setup_environ
 setup_environ(settings)
 
-DATABASE = settings.DATABASES['chembl']
+from chembl_migration_model.models import Activities, MoleculeDictionary, CompoundRecords
+from chembl_core_model.models import Activities, MoleculeDictionary, CompoundRecords, MoleculeHierarchy
+
 
 class FP:
     def __init__(self, fp):
@@ -30,93 +32,61 @@ class FP:
         return self.fp.__str__()
 
 
-def read_from_db(query):
-    dsn = cx_Oracle.makedsn(DATABASE['HOST'], DATABASE['PORT'], service_name=DATABASE['NAME'])
-    connection = cx_Oracle.connect(DATABASE['USER'], DATABASE['PASSWORD'], dsn)
-    with connection:
-        try:
-            df = pd.read_sql_query(query, connection)
-            return df
-        except cx_Oracle.DatabaseError as dberror:
-            print dberror
-
-
 class GetActivities(luigi.Task):
     value = luigi.IntParameter()
 
     final_cols = ['MOLREGNO', 'TID', 'SMILES', 'PREF_NAME', 'CHEMBL_ID', 'TARGET_PREF_NAME', 'TARGET_CHEMBL_ID', 'TARGET_ACCESSION']
 
-    query_activities = """
-    SELECT
-        ac.ACTIVITY_ID,
-        ac.ASSAY_ID,
-        ac.doc_id,
-        mh.PARENT_MOLREGNO as molregno,
-        ac.standard_relation,
-        ac.STANDARD_VALUE,
-        ac.STANDARD_UNITS,
-        cs.CANONICAL_SMILES as smiles,
-        md.PREF_NAME,
-        md.CHEMBL_ID,
-        td.tid,
-        td.PREF_NAME AS target_pref_name,
-        td.CHEMBL_ID as target_ChEMBL_ID,
-        cseq.ACCESSION as target_accession
-    FROM chembl.ACTIVITIES ac, chembl.assays ass, chembl.TARGET_DICTIONARY td,
-    chembl.COMPOUND_STRUCTURES cs, chembl.MOLECULE_DICTIONARY md, chembl.compound_properties cp, chembl.molecule_hierarchy mh,
-    chembl.target_components tc, chembl.component_sequences cseq
-    where
-    ac.ASSAY_ID = ass.ASSAY_ID
-    and
-    ass.TID = td.TID
-    and
-    ac.MOLREGNO = mh.MOLREGNO
-    and
-    mh.PARENT_MOLREGNO = md.MOLREGNO
-    and
-    mh.PARENT_MOLREGNO = cp.molregno
-    and
-    mh.PARENT_MOLREGNO = cs.molregno
-    and
-    td.tid = tc.tid
-    and
-    tc.component_id = cseq.component_id
-    and
-    -- cp.med_chem_friendly = 'Y'
-    cp.mw_freebase BETWEEN 150 AND 1000
-    AND
-    cp.aromatic_rings <= 7
-    and
-    cp.rtb <= 20
-    AND
-    cp.heavy_atoms BETWEEN 7 AND 42
-    AND
-    cp.alogp BETWEEN -4 AND 10
-    AND
-    cp.num_alerts <= 4
-    and
-    ac.STANDARD_UNITS = 'nM'
-    AND
-    ac.STANDARD_TYPE in ('EC50', 'IC50', 'Ki', 'Kd', 'XC50', 'AC50', 'Potency')
-    and
-    ac.standard_value <= {}
-    and
-    ac.data_validity_comment is null
-    and
-    ac.standard_relation in ('=','<')
-    and
-    ac.potential_duplicate = 0
-    and
-    ass.confidence_score >= 8
-    and
-    td.target_type = 'SINGLE PROTEIN'"""
-
     def requires(self):
         return []
 
     def run(self):
-        df = read_from_db(self.query_activities.format(str(self.value * 1000)))
+        ac = Activities.objects.filter(molecule__compoundproperties__mw_freebase__range=(150, 1000),
+                                       molecule__compoundproperties__aromatic_rings__lte=7,
+                                       molecule__compoundproperties__rtb__lte=20,
+                                       molecule__compoundproperties__heavy_atoms__range=(7, 42),
+                                       molecule__compoundproperties__alogp__range=(-4, 10),
+                                       molecule__compoundproperties__num_alerts__lte=4,
+                                       standard_units='nM',
+                                       standard_type__in=['EC50', 'IC50', 'Ki', 'Kd', 'XC50', 'AC50', 'Potency'],
+                                       standard_value__lte=1000,
+                                       data_validity_comment=None,
+                                       standard_relation__in=['=', '<'],
+                                       potential_duplicate=0,
+                                       assay__confidence_score__confidence_score__gte=8,
+                                       assay__target__target_type__target_type='SINGLE PROTEIN',)
 
+        df = pd.DataFrame.from_records(ac.values('activity_id',
+                                                 'assay_id',
+                                                 'doc_id',
+                                                 'molecule_id',
+                                                 'standard_relation',
+                                                 'standard_value',
+                                                 'standard_units',
+                                                 'molecule__compoundstructures__canonical_smiles',
+                                                 'molecule__pref_name',
+                                                 'molecule__chembl_id',
+                                                 'assay__target__tid',
+                                                 'assay__target__pref_name',
+                                                 'assay__target__chembl_id',
+                                                 'assay__target__component_sequences__accession'))
+
+        df.rename(columns={'activity_id': 'ACTIVITY_ID',
+                           'assay_id': 'ASSAY_ID',
+                           'doc_id': 'DOC_ID',
+                           'molecule_id': 'MOLREGNO',
+                           'standard_relation': 'STANDARD_RELATION',
+                           'standard_value': 'STANDARD_VALUE',
+                           'standard_units': 'STANDARD_UNITS',
+                           'molecule__compoundstructures__canonical_smiles': 'SMILES',
+                           'molecule__pref_name': 'PREF_NAME',
+                           'molecule__chembl_id': 'CHEMBL_ID',
+                           'assay__target_id': 'TID',
+                           'assay__target__pref_name': 'TARGET_PREF_NAME',
+                           'assay__target__chembl_id': 'TARGET_CHEMBL_ID',
+                           'assay__target__component_sequences': 'TARGET_ACCESSION'}, inplace=True)
+
+        df = pd.DataFrame(vals, columns=cols)
         # Upper branch
         # IT'S ONLY A REMOVAL OF DUPLICATES
         dfu2 = df.drop_duplicates(subset=['MOLREGNO', 'TID'])
@@ -147,38 +117,38 @@ class GetDrugs(luigi.Task):
     final_cols = ['PARENT_MOLREGNO', 'CHEMBL_ID', 'SYNONYMS', 'RESEARCH_CODES', 'OB_PATENT_NO',
                   'SC_PATENT_NO', 'CANONICAL_SMILES']
 
-    query_drugs = """ 
-    SELECT mbd.*, cs.canonical_smiles
-    FROM CHEMBL.molecule_browse_drugs mbd, 
-    CHEMBL.molecule_dictionary md, chembl.compound_structures cs, chembl.compound_properties cp
-    WHERE
-    md.molecule_type = 'Small molecule' 
-    AND 
-    mbd.parent_molregno = md.molregno
-    and
-    md.molregno = cs.molregno
-    and 
-    cs.canonical_smiles is not null
-    and
-    md.molregno = cp.molregno
-    and
-    cp.mw_freebase BETWEEN 150 AND 1000
-    AND
-    cp.aromatic_rings <= 7
-    and
-    cp.rtb <= 20
-    AND
-    cp.heavy_atoms BETWEEN 7 AND 52
-    AND
-    cp.alogp BETWEEN -4 AND 10
-    AND
-    cp.num_alerts <= 4"""
 
     def requires(self):
         return []
 
     def run(self):
-        df = read_from_db(self.query_drugs)
+        crs = CompoundRecords.objects.filter(src_id__in=[8, 9, 12, 13, 36],).values_list('molecule__molregno', flat=True)
+        # 8 -> clinical candidates
+        # 9 -> fda orange book
+        # 12 -> Manually added drugs
+        # 13 -> usp dictionary of usan and international drug names
+        # 36 -> withdrawn drugs
+
+        mhs = MoleculeHierarchy.objects.filter(molecule__molecule_type='Small molecule',
+                                               molecule__compoundstructures__canonical_smiles__isnull=False,
+                                               molecule__compoundproperties__mw_freebase__range=(150, 1000),
+                                               molecule__compoundproperties__aromatic_rings__lte=7,
+                                               molecule__compoundproperties__rtb__lte=20,
+                                               molecule__compoundproperties__heavy_atoms__range=(7, 42),
+                                               molecule__compoundproperties__alogp__range=(-4, 10),
+                                               molecule__compoundproperties__num_alerts__lte=4,
+                                               molecule__molregno__in=crs).values_list('parent_molecule__molregno', flat=True).distinct()
+
+        mols = MoleculeDictionary.objects.filter(molregno__in=mhs)
+
+        df = pd.DataFrame.from_records(mols.values('molregno',
+                                                   'chembl_id',
+                                                   'compoundstructures__canonical_smiles',))
+
+        df.rename(columns={'molregno': 'PARENT_MOLREGNO',
+                           'chembl_id': 'CHEMBL_ID',
+                           'compoundstructures__canonical_smiles': 'CANONICAL_SMILES'}, inplace=True)
+
 
         df2 = df[self.final_cols]
         df2.to_csv('chembl_drugs.csv', index=False, quoting=csv.QUOTE_NONNUMERIC)
@@ -365,8 +335,8 @@ class MergeTables(luigi.Task):
         ten = pd.read_csv('final_result_10uM.csv')
         one = pd.read_csv('final_result_1uM.csv')
 
-        one['IS1uM'] = 'True'
-        ten['IS1uM'] = 'False'
+        one['VALUE'] = 1
+        ten['VALUE'] = 10
 
         result = pd.concat([one, ten])
         result.to_csv('merged_tables.csv')
