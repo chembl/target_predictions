@@ -20,9 +20,7 @@ import settings
 from django.core.management import setup_environ
 setup_environ(settings)
 
-from chembl_migration_model.models import Activities, MoleculeDictionary, CompoundRecords
-from chembl_core_model.models import Activities, MoleculeDictionary, CompoundRecords, MoleculeHierarchy
-
+from chembl_migration_model.models import Activities, MoleculeDictionary, CompoundRecords, MoleculeHierarchy
 
 class FP:
     def __init__(self, fp):
@@ -178,9 +176,7 @@ class MakeModel(luigi.Task):
         targets = pd.DataFrame(targets, columns=['targets'])
 
         PandasTools.AddMoleculeColumnToFrame(mols, smilesCol='SMILES')
-
         dataset = pd.merge(mols, targets, left_index=True, right_index=True)
-
         dataset = dataset.ix[dataset['ROMol'].notnull()]
 
         def computeFP(x):
@@ -200,15 +196,12 @@ class MakeModel(luigi.Task):
         yy = [c for c in dataset['targets']]
 
         mlb = MultiLabelBinarizer()
-        y = mlb.fit_transform(yy)  # this is for newer versions of sklearn
+        y = mlb.fit_transform(yy)
 
         morgan_bnb = OneVsRestClassifier(MultinomialNB())
-
         morgan_bnb.fit(X, y)
-
         morgan_bnb.targets = mlb.classes_
 
-        # SAVE MODEL
         joblib.dump(morgan_bnb, 'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
     def output(self):
@@ -231,18 +224,10 @@ class MakePredictions(luigi.Task):
             scores = OrderedDict(sorted(d.items(), key=lambda t: t[1], reverse=True))
             return [(m, t, s) for t, s in scores.items()[0:N]]
 
-        print morgan_bnb.multilabel_
-
         classes = list(morgan_bnb.targets)
 
-        print "targets", len(classes)
-        print "reading drugs..."
-
         PandasTools.AddMoleculeColumnToFrame(mols, smilesCol='CANONICAL_SMILES')
-
         mols = mols.ix[mols['ROMol'].notnull()]
-
-        print mols.shape
 
         def computeFP(x):
             # compute depth-2 morgan fingerprint hashed to 1024 bits
@@ -256,12 +241,8 @@ class MakePredictions(luigi.Task):
 
         # filter potentially failed fingerprint computations
         mols = mols.ix[mols['FP'].notnull()]
-
         fps = [f.fp for f in mols['FP']]
-
         molregnos = mols['PARENT_MOLREGNO']
-
-        print "Predicting..."
 
         ll = []
 
@@ -269,9 +250,6 @@ class MakePredictions(luigi.Task):
             ll.extend(topNpreds(m, f, 50))
 
         preds = pd.DataFrame(ll, columns=['molregno', 'target_chembl_id', 'proba'])
-
-        print preds.head(10)
-
         preds.to_csv('drug_predictions_{}uM.csv'.format(self.value))
 
     def output(self):
