@@ -47,7 +47,7 @@ class GetActivities(luigi.Task):
                                        molecule__compoundproperties__num_alerts__lte=4,
                                        standard_units='nM',
                                        standard_type__in=['EC50', 'IC50', 'Ki', 'Kd', 'XC50', 'AC50', 'Potency'],
-                                       standard_value__lte=1000,
+                                       standard_value__lte=self.value*1000,
                                        data_validity_comment=None,
                                        standard_relation__in=['=', '<'],
                                        potential_duplicate=0,
@@ -57,7 +57,7 @@ class GetActivities(luigi.Task):
         df = pd.DataFrame.from_records(ac.values('activity_id',
                                                  'assay_id',
                                                  'doc_id',
-                                                 'molecule_id',
+                                                 'molecule__moleculehierarchy__parent_molecule_id',
                                                  'standard_relation',
                                                  'standard_value',
                                                  'standard_units',
@@ -72,19 +72,18 @@ class GetActivities(luigi.Task):
         df.rename(columns={'activity_id': 'ACTIVITY_ID',
                            'assay_id': 'ASSAY_ID',
                            'doc_id': 'DOC_ID',
-                           'molecule_id': 'MOLREGNO',
+                           'molecule__moleculehierarchy__parent_molecule_id': 'MOLREGNO',
                            'standard_relation': 'STANDARD_RELATION',
                            'standard_value': 'STANDARD_VALUE',
                            'standard_units': 'STANDARD_UNITS',
                            'molecule__compoundstructures__canonical_smiles': 'SMILES',
                            'molecule__pref_name': 'PREF_NAME',
                            'molecule__chembl_id': 'CHEMBL_ID',
-                           'assay__target_id': 'TID',
+                           'assay__target__tid': 'TID',
                            'assay__target__pref_name': 'TARGET_PREF_NAME',
                            'assay__target__chembl_id': 'TARGET_CHEMBL_ID',
-                           'assay__target__component_sequences': 'TARGET_ACCESSION'}, inplace=True)
+                           'assay__target__component_sequences__accession': 'TARGET_ACCESSION'}, inplace=True)
 
-        df = pd.DataFrame(vals, columns=cols)
         # Upper branch
         # IT'S ONLY A REMOVAL OF DUPLICATES
         dfu2 = df.drop_duplicates(subset=['MOLREGNO', 'TID'])
@@ -113,8 +112,7 @@ class GetActivities(luigi.Task):
 
 class GetDrugs(luigi.Task):
 
-    final_cols = ['PARENT_MOLREGNO', 'CHEMBL_ID', 'SYNONYMS', 'RESEARCH_CODES', 'OB_PATENT_NO',
-                  'SC_PATENT_NO', 'CANONICAL_SMILES']
+    final_cols = ['PARENT_MOLREGNO', 'CHEMBL_ID', 'CANONICAL_SMILES']
 
     def requires(self):
         return []
@@ -245,7 +243,6 @@ class MakePredictions(luigi.Task):
         molregnos = mols['PARENT_MOLREGNO']
 
         ll = []
-
         for m, f in zip(molregnos, fps):
             ll.extend(topNpreds(m, f, 50))
 
