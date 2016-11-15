@@ -39,6 +39,7 @@ class FP:
 class GetActivities(luigi.Task):
 
     value = luigi.IntParameter()
+    version = luigi.Parameter()
     final_cols = ['MOLREGNO', 'TID', 'SMILES', 'PREF_NAME', 'CHEMBL_ID', 'TARGET_PREF_NAME', 'TARGET_CHEMBL_ID', 'TARGET_ACCESSION']
 
     def requires(self):
@@ -110,14 +111,15 @@ class GetActivities(luigi.Task):
         u_join = dfu2[dfu2['TARGET_CHEMBL_ID'].isin(ml_join['TARGET_CHEMBL_ID'])].sort_values(
             by=['MOLREGNO', 'TID', ]).reset_index(drop=True)
         u_join = u_join[self.final_cols]
-        u_join.to_csv(OUT_DIR+'chembl_{}uM.csv'.format(self.value), index=False, quoting=csv.QUOTE_NONNUMERIC)
+        u_join.to_csv(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value), index=False, quoting=csv.QUOTE_NONNUMERIC)
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR+'chembl_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value))
 
 
 class GetDrugs(luigi.Task):
 
+    version = luigi.Parameter()
     final_cols = ['PARENT_MOLREGNO', 'CHEMBL_ID', 'CANONICAL_SMILES']
 
     def requires(self):
@@ -152,17 +154,18 @@ class GetDrugs(luigi.Task):
                            'compoundstructures__canonical_smiles': 'CANONICAL_SMILES'}, inplace=True)
 
         df2 = df[self.final_cols]
-        df2.to_csv(OUT_DIR+'chembl_drugs.csv', index=False, quoting=csv.QUOTE_NONNUMERIC)
+        df2.to_csv(OUT_DIR.format(self.version)+'chembl_drugs.csv', index=False, quoting=csv.QUOTE_NONNUMERIC)
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR+'chembl_drugs.csv')
+        return luigi.LocalTarget(OUT_DIR.format(self.version)+'chembl_drugs.csv')
 
 
 class MakeModel(luigi.Task):
     value = luigi.IntParameter()
+    version = luigi.Parameter()
 
     def requires(self):
-        return [GetActivities(self.value)]
+        return [GetActivities(value=self.value, version=self.version)]
 
     def run(self):
         data = pd.read_csv('chembl_{}uM.csv'.format(self.value))
@@ -206,21 +209,23 @@ class MakeModel(luigi.Task):
         morgan_bnb.fit(X, y)
         morgan_bnb.targets = mlb.classes_
 
-        joblib.dump(morgan_bnb, OUT_DIR+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        joblib.dump(morgan_bnb, OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        return luigi.LocalTarget(OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
 
 class MakePredictions(luigi.Task):
     value = luigi.IntParameter()
+    version = luigi.Parameter()
 
     def requires(self):
-        return [GetDrugs(), MakeModel(self.value)]
+        return [GetDrugs(version=self.version),
+                MakeModel(value=self.value,version=self.version)]
 
     def run(self):
-        mols = pd.read_csv(OUT_DIR='chembl_drugs.csv'.format(self.value))
-        morgan_bnb = joblib.load(OUT_DIR+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        mols = pd.read_csv(OUT_DIR.format(self.version)+'chembl_drugs.csv'.format(self.value))
+        morgan_bnb = joblib.load(OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
         def topNpreds(m, fp, N=5):
             probas = list(morgan_bnb.predict_proba(fp)[0])
@@ -253,28 +258,31 @@ class MakePredictions(luigi.Task):
             ll.extend(topNpreds(m, f, 50))
 
         preds = pd.DataFrame(ll, columns=['molregno', 'target_chembl_id', 'proba'])
-        preds.to_csv(OUT_DIR+'drug_predictions_{}uM.csv'.format(self.value))
+        preds.to_csv(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR+'drug_predictions_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))
 
 
 class FinalTask(luigi.Task):
     value = luigi.IntParameter()
+    version = luigi.Parameter()
 
     def requires(self):
-        return [GetActivities(self.value), GetDrugs(), MakePredictions(self.value)]
+        return [GetActivities(value=self.value, version=self.version),
+                GetDrugs(version=self.version),
+                MakePredictions(value=self.value, version=self.version)]
 
     def run(self):
-        ac = pd.read_csv(OUT_DIR+'chembl_{}uM.csv'.format(self.value))
-        dr = pd.read_csv(OUT_DIR+'chembl_drugs.csv'.format(self.value))
+        ac = pd.read_csv(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value))
+        dr = pd.read_csv(OUT_DIR.format(self.version)+'chembl_drugs.csv'.format(self.value))
 
         # "groupby" targets
         df2 = ac.drop_duplicates('TID')[['TID', 'TARGET_PREF_NAME', 'TARGET_CHEMBL_ID', 'TARGET_ACCESSION']]
         df3 = df2.sort_values(by='TID').reset_index(drop=True)
 
         ac['exists'] = 'YES'
-        preds = pd.read_csv(OUT_DIR+'drug_predictions_{}uM.csv'.format(self.value))
+        preds = pd.read_csv(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))
 
         # no rename
         del preds['Unnamed: 0']
@@ -298,34 +306,37 @@ class FinalTask(luigi.Task):
         final = last_join_sort[final_columns]
         final.rename(columns={'proba': 'PROBABILITY', 'exists': 'IN_TRAINING'}, inplace=True)
 
-        final.to_csv(OUT_DIR+'final_result_{}uM.csv'.format(self.value), index=False)
+        final.to_csv(OUT_DIR.format(self.version)+'final_result_{}uM.csv'.format(self.value), index=False)
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR+'final_result_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(OUT_DIR.format(self.version)+'final_result_{}uM.csv'.format(self.value))
 
 
 class MergeTables(luigi.Task):
+
+    version = luigi.Parameter()
+
     def requires(self):
-        return [FinalTask(1), FinalTask(10)]
+        return [FinalTask(value=1, version=self.version), FinalTask(value=10, version=self.version)]
 
     def run(self):
-        ten = pd.read_csv(OUT_DIR+'final_result_10uM.csv')
-        one = pd.read_csv(OUT_DIR+'final_result_1uM.csv')
+        ten = pd.read_csv(OUT_DIR.format(self.version)+'final_result_10uM.csv')
+        one = pd.read_csv(OUT_DIR.format(self.version)+'final_result_1uM.csv')
 
         one['VALUE'] = 1
         ten['VALUE'] = 10
 
         result = pd.concat([one, ten])
-        result.to_csv(OUT_DIR+'merged_tables.csv', index=False)
+        result.to_csv(OUT_DIR.format(self.version)+'merged_tables.csv', index=False)
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR+'merged_tables.csv')
+        return luigi.LocalTarget(OUT_DIR.format(self.version)+'merged_tables.csv')
 
 
 if __name__ == "__main__":
 
     args = get_arguments()
-    OUT_DIR.format(args.chembl_version)
+    OUT_DIR.format('chembl_'+args.chembl_version)
 
     if not os.path.exists(OUT_DIR.format(args.chembl_version)):
         os.makedirs(OUT_DIR.format(args.chembl_version))
@@ -334,4 +345,4 @@ if __name__ == "__main__":
     if not os.path.exists(OUT_DIR.format(args.chembl_version)+'models/1uM'):
         os.makedirs(OUT_DIR.format(args.chembl_version)+'models/1uM')
     # luigi.run(['GetActivities', '--local-scheduler', '--value', '10', '--workers', '2'])
-    luigi.run(['MergeTables', '--local-scheduler', '--workers', '2'])
+    luigi.run(['MergeTables', '--local-scheduler', '--version', args.chembl_version, '--workers', '2'])
