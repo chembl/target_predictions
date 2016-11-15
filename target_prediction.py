@@ -167,7 +167,7 @@ class MakeModel(luigi.Task):
         return [GetActivities(value=self.value, version=self.version)]
 
     def run(self):
-        data = pd.read_csv('chembl_{}uM.csv'.format(self.value))
+        data = pd.read_csv(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value))
 
         mols = data[['MOLREGNO', 'SMILES']]
         mols = mols.drop_duplicates('MOLREGNO')
