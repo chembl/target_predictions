@@ -20,8 +20,7 @@ from django.core.management import setup_environ
 setup_environ(settings)
 from chembl_migration_model.models import Activities, MoleculeDictionary, CompoundRecords, MoleculeHierarchy
 
-OUT_DIR='/nfs/panda/chembl/eloy/deploy/target_predictions/out/{}/'
-
+OUT_DIR = settings.OUT_DIR
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Molecular autoencoder network')
