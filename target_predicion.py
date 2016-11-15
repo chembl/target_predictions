@@ -333,10 +333,7 @@ class MergeTables(luigi.Task):
 
 
 if __name__ == "__main__":
-
     args = get_arguments()
-    OUT_DIR.format(args.chembl_version)
-
     if not os.path.exists(OUT_DIR.format(args.chembl_version)):
         os.makedirs(OUT_DIR.format(args.chembl_version))
     if not os.path.exists(OUT_DIR.format(args.chembl_version)+'models/10uM'):
