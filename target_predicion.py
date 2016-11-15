@@ -1,6 +1,7 @@
 import csv
 import os
 import sys
+import argparse
 from collections import OrderedDict
 import luigi
 import numpy
@@ -14,13 +15,18 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import MultiLabelBinarizer
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'deploy')))
-#sys.path.append(os.path.abspath(os.path.join(os.getcwd(), 'deploy', 'deploy')))
-
 import settings
 from django.core.management import setup_environ
 setup_environ(settings)
-
 from chembl_migration_model.models import Activities, MoleculeDictionary, CompoundRecords, MoleculeHierarchy
+
+OUT_DIR='/nfs/panda/chembl/eloy/deploy/target_predictions/out/{}/'
+
+
+def get_arguments():
+    parser = argparse.ArgumentParser(description='Molecular autoencoder network')
+    parser.add_argument('chembl_version', type=str, help='Version of chembl.')
+    return parser.parse_args()
 
 class FP:
     def __init__(self, fp):
@@ -104,10 +110,10 @@ class GetActivities(luigi.Task):
         u_join = dfu2[dfu2['TARGET_CHEMBL_ID'].isin(ml_join['TARGET_CHEMBL_ID'])].sort_values(
             by=['MOLREGNO', 'TID', ]).reset_index(drop=True)
         u_join = u_join[self.final_cols]
-        u_join.to_csv('chembl_{}uM.csv'.format(self.value), index=False, quoting=csv.QUOTE_NONNUMERIC)
+        u_join.to_csv(OUT_DIR+'chembl_{}uM.csv'.format(self.value), index=False, quoting=csv.QUOTE_NONNUMERIC)
 
     def output(self):
-        return luigi.LocalTarget('chembl_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(OUT_DIR+'chembl_{}uM.csv'.format(self.value))
 
 
 class GetDrugs(luigi.Task):
@@ -146,10 +152,10 @@ class GetDrugs(luigi.Task):
                            'compoundstructures__canonical_smiles': 'CANONICAL_SMILES'}, inplace=True)
 
         df2 = df[self.final_cols]
-        df2.to_csv('chembl_drugs.csv', index=False, quoting=csv.QUOTE_NONNUMERIC)
+        df2.to_csv(OUT_DIR+'chembl_drugs.csv', index=False, quoting=csv.QUOTE_NONNUMERIC)
 
     def output(self):
-        return luigi.LocalTarget('chembl_drugs.csv')
+        return luigi.LocalTarget(OUT_DIR+'chembl_drugs.csv')
 
 
 class MakeModel(luigi.Task):
@@ -200,10 +206,10 @@ class MakeModel(luigi.Task):
         morgan_bnb.fit(X, y)
         morgan_bnb.targets = mlb.classes_
 
-        joblib.dump(morgan_bnb, 'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        joblib.dump(morgan_bnb, OUT_DIR+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
     def output(self):
-        return luigi.LocalTarget('models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        return luigi.LocalTarget(OUT_DIR+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
 
 class MakePredictions(luigi.Task):
@@ -213,8 +219,8 @@ class MakePredictions(luigi.Task):
         return [GetDrugs(), MakeModel(self.value)]
 
     def run(self):
-        mols = pd.read_csv('chembl_drugs.csv'.format(self.value))
-        morgan_bnb = joblib.load('models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        mols = pd.read_csv(OUT_DIR='chembl_drugs.csv'.format(self.value))
+        morgan_bnb = joblib.load(OUT_DIR+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
         def topNpreds(m, fp, N=5):
             probas = list(morgan_bnb.predict_proba(fp)[0])
@@ -247,10 +253,10 @@ class MakePredictions(luigi.Task):
             ll.extend(topNpreds(m, f, 50))
 
         preds = pd.DataFrame(ll, columns=['molregno', 'target_chembl_id', 'proba'])
-        preds.to_csv('drug_predictions_{}uM.csv'.format(self.value))
+        preds.to_csv(OUT_DIR+'drug_predictions_{}uM.csv'.format(self.value))
 
     def output(self):
-        return luigi.LocalTarget('drug_predictions_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(OUT_DIR+'drug_predictions_{}uM.csv'.format(self.value))
 
 
 class FinalTask(luigi.Task):
@@ -260,21 +266,18 @@ class FinalTask(luigi.Task):
         return [GetActivities(self.value), GetDrugs(), MakePredictions(self.value)]
 
     def run(self):
-        ac = pd.read_csv('chembl_{}uM.csv'.format(self.value))
-        dr = pd.read_csv('chembl_drugs.csv'.format(self.value))
+        ac = pd.read_csv(OUT_DIR+'chembl_{}uM.csv'.format(self.value))
+        dr = pd.read_csv(OUT_DIR+'chembl_drugs.csv'.format(self.value))
 
         # "groupby" targets
         df2 = ac.drop_duplicates('TID')[['TID', 'TARGET_PREF_NAME', 'TARGET_CHEMBL_ID', 'TARGET_ACCESSION']]
         df3 = df2.sort_values(by='TID').reset_index(drop=True)
 
-        # add column (java snippet)
         ac['exists'] = 'YES'
-
-        preds = pd.read_csv('drug_predictions_{}uM.csv'.format(self.value))
+        preds = pd.read_csv(OUT_DIR+'drug_predictions_{}uM.csv'.format(self.value))
 
         # no rename
         del preds['Unnamed: 0']
-
         d_join = pd.merge(dr, preds, how='inner', left_on='PARENT_MOLREGNO', right_on='molregno')
 
         # should be right join to match number of rows but it forces pandas to convert TID to float
@@ -295,10 +298,10 @@ class FinalTask(luigi.Task):
         final = last_join_sort[final_columns]
         final.rename(columns={'proba': 'PROBABILITY', 'exists': 'IN_TRAINING'}, inplace=True)
 
-        final.to_csv('final_result_{}uM.csv'.format(self.value))
+        final.to_csv(OUT_DIR+'final_result_{}uM.csv'.format(self.value), index=False)
 
     def output(self):
-        return luigi.LocalTarget('final_result_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(OUT_DIR+'final_result_{}uM.csv'.format(self.value))
 
 
 class MergeTables(luigi.Task):
@@ -306,25 +309,29 @@ class MergeTables(luigi.Task):
         return [FinalTask(1), FinalTask(10)]
 
     def run(self):
-        ten = pd.read_csv('final_result_10uM.csv')
-        one = pd.read_csv('final_result_1uM.csv')
+        ten = pd.read_csv(OUT_DIR+'final_result_10uM.csv')
+        one = pd.read_csv(OUT_DIR+'final_result_1uM.csv')
 
         one['VALUE'] = 1
         ten['VALUE'] = 10
 
         result = pd.concat([one, ten])
-        result.to_csv('merged_tables.csv')
+        result.to_csv(OUT_DIR+'merged_tables.csv', index=False)
 
     def output(self):
-        return luigi.LocalTarget('merged_tables.csv')
+        return luigi.LocalTarget(OUT_DIR+'merged_tables.csv')
 
 
 if __name__ == "__main__":
-    if not os.path.exists('models'):
-        os.makedirs('models')
-    if not os.path.exists('models/10uM'):
-        os.makedirs('models/10uM')
-    if not os.path.exists('models/1uM'):
-        os.makedirs('models/1uM')
+
+    args = get_arguments()
+    OUT_DIR.format(args.chembl_version)
+
+    if not os.path.exists(OUT_DIR.format(args.chembl_version)):
+        os.makedirs(OUT_DIR.format(args.chembl_version))
+    if not os.path.exists(OUT_DIR.format(args.chembl_version)+'models/10uM'):
+        os.makedirs(OUT_DIR.format(args.chembl_version)+'models/10uM')
+    if not os.path.exists(OUT_DIR.format(args.chembl_version)+'models/1uM'):
+        os.makedirs(OUT_DIR.format(args.chembl_version)+'models/1uM')
     # luigi.run(['GetActivities', '--local-scheduler', '--value', '10', '--workers', '2'])
     luigi.run(['MergeTables', '--local-scheduler', '--workers', '2'])
