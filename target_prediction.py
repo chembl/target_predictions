@@ -19,6 +19,7 @@ import settings
 from django.core.management import setup_environ
 setup_environ(settings)
 from chembl_migration_model.models import Activities, MoleculeDictionary, CompoundRecords, MoleculeHierarchy
+from target_predictions.models import TargetPredictions
 
 OUT_DIR = settings.OUT_DIR
 
@@ -204,7 +205,7 @@ class MakeModel(luigi.Task):
         mlb = MultiLabelBinarizer()
         y = mlb.fit_transform(yy)
 
-        morgan_bnb = OneVsRestClassifier(MultinomialNB())
+        morgan_bnb = OneVsRestClassifier(MultinomialNB(), n_jobs=12)
         morgan_bnb.fit(X, y)
         morgan_bnb.targets = mlb.classes_
 
