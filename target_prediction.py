@@ -205,7 +205,7 @@ class MakeModel(luigi.Task):
         mlb = MultiLabelBinarizer()
         y = mlb.fit_transform(yy)
 
-        morgan_bnb = OneVsRestClassifier(MultinomialNB(), n_jobs=12)
+        morgan_bnb = OneVsRestClassifier(MultinomialNB())
         morgan_bnb.fit(X, y)
         morgan_bnb.targets = mlb.classes_
 
@@ -333,6 +333,29 @@ class MergeTables(luigi.Task):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'merged_tables.csv')
 
 
+class InsertDB(luigi.Task):
+    version = luigi.Parameter()
+    n_entries = None
+
+    def __init__(self):
+        df = pd.read_csv(OUT_DIR.format(self.version) + 'merged_tables.csv')
+        self.n_entries = df.shape[0]
+
+    def requires(self):
+        return [MergeTables(version=self.version)]
+
+    def run(self):
+        df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
+        entries = []
+        for e in df.T.to_dict().values():
+            entries.append(TargetPredictions(**e))
+        TargetPredictions.objects.bulk_create(entries)
+
+    def output(self):
+        print TargetPredictions.objects.count() == self.n_entries
+        return TargetPredictions.objects.count() == self.n_entries
+
+
 if __name__ == "__main__":
     args = get_arguments()
     if not os.path.exists(OUT_DIR.format(args.chembl_version)):
@@ -342,4 +365,5 @@ if __name__ == "__main__":
     if not os.path.exists(OUT_DIR.format(args.chembl_version)+'models/1uM'):
         os.makedirs(OUT_DIR.format(args.chembl_version)+'models/1uM')
     # luigi.run(['GetActivities', '--local-scheduler', '--value', '10', '--workers', '2'])
-    luigi.run(['MergeTables', '--local-scheduler', '--version', args.chembl_version, '--workers', '2'])
+    # luigi.run(['MergeTables', '--local-scheduler', '--version', args.chembl_version, '--workers', '2'])
+    luigi.run(['InsertDB', '--local-scheduler', '--version', args.chembl_version, '--workers', '2'])
