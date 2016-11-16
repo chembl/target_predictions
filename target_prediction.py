@@ -338,6 +338,7 @@ class InsertDB(luigi.Task):
     n_entries = None
 
     def __init__(self):
+        super(InsertDB, self).__init__(*args, **kwargs)
         df = pd.read_csv(OUT_DIR.format(self.version) + 'merged_tables.csv')
         self.n_entries = df.shape[0]
 
