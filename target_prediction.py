@@ -363,7 +363,7 @@ class InsertDB(luigi.Task):
         for index, row in df[:10].iterrows():
             model = TargetPredictions()
             model.pred_id = row['PRED_ID']
-            model.parent_molrgeno = row['PARENT_MOLREGNO']
+            model.parent_molregno = row['PARENT_MOLREGNO']
             model.chembl_id = row['CHEMBL_ID']
             model.tid = row['TID']
             model.target_chembl_id = row['TARGET_CHEMBL_ID']
