@@ -337,8 +337,11 @@ class DbInserts(luigi.Target):
         self.version = version
 
     def exists(self):
-        df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
-        return TargetPredictions.objects.count() == df.shape[0]
+        ex = False
+        if os.path.isfile(OUT_DIR.format(self.version)+'merged_tables.csv'):
+            df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
+            ex = TargetPredictions.objects.count() == df.shape[0]
+        return ex
 
 
 class InsertDB(luigi.Task):
