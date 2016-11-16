@@ -16,7 +16,7 @@ class TargetPredictions(six.with_metaclass(ChemblModelMetaClass, ChemblCoreAbstr
     tid = ChemblPositiveIntegerField(length=11, null=False, help_text=u'Unique ID for the target')
     target_chembl_id = ChemblCharField(max_length=20, help_text=u'ChEMBL identifier for this target (for use on web interface etc)')
     target_accession = ChemblCharField(max_length=20, help_text=u'Accession for the sequence in the source database from which it was taken (e.g., UniProt accession for proteins).')
-    probability = models.DecimalField(max_digits=20, decimal_places=18, help_text=u'Probability of binding for this molecule-target pair')
+    probability = models.DecimalField(max_digits=12, decimal_places=11, help_text=u'Probability of binding for this molecule-target pair')
     in_training = ChemblCharField(max_length=20, help_text=u'Mark if molecule is in training')
     value = ChemblPositiveIntegerField(length=5, null=False, help_text=u'1uM or 10uM')
 
