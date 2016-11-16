@@ -360,7 +360,7 @@ class InsertDB(luigi.Task):
 
         df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
         # SLOW WAY, need to fix
-        for index, row in df[:10].iterrows():
+        for index, row in df.iterrows():
             model = TargetPredictions()
             model.pred_id = row['PRED_ID']
             model.parent_molregno = row['PARENT_MOLREGNO']
