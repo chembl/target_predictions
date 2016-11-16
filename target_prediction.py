@@ -297,15 +297,11 @@ class FinalTask(luigi.Task):
                              left_on=['MOLREGNO', 'TARGET_CHEMBL_ID'], right_on=['PARENT_MOLREGNO', 'TARGET_CHEMBL_ID'])
         last_join_sort = last_join.sort_values(by=['PARENT_MOLREGNO', 'proba', ], ascending=[1, 0])
 
-        # add column (java snippet)
-        last_join_sort['PRED_ID'] = range(1, len(last_join_sort) + 1)
-
-        final_columns = ['PRED_ID', 'PARENT_MOLREGNO', 'CHEMBL_ID', 'TID', 'TARGET_CHEMBL_ID', 'TARGET_ACCESSION',
+        final_columns = ['PARENT_MOLREGNO', 'CHEMBL_ID', 'TID', 'TARGET_CHEMBL_ID', 'TARGET_ACCESSION',
                          'proba', 'exists']
 
         final = last_join_sort[final_columns]
         final.rename(columns={'proba': 'PROBABILITY', 'exists': 'IN_TRAINING'}, inplace=True)
-
         final.to_csv(OUT_DIR.format(self.version)+'final_result_{}uM.csv'.format(self.value), index=False)
 
     def output(self):
@@ -327,6 +323,8 @@ class MergeTables(luigi.Task):
         ten['VALUE'] = 10
 
         result = pd.concat([one, ten])
+
+        result['PRED_ID'] = range(1, len(result) + 1)
         result.to_csv(OUT_DIR.format(self.version)+'merged_tables.csv', index=False)
 
     def output(self):
