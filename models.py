@@ -7,12 +7,11 @@ from chembl_core_db.db.models.abstractModel import ChemblCoreAbstractModel
 from chembl_core_db.db.models.abstractModel import ChemblModelMetaClass
 from django.utils import six
 
-# Create your models here.
 
 class TargetPredictions(six.with_metaclass(ChemblModelMetaClass, ChemblCoreAbstractModel)):
 
-    pred_id = ChemblPositiveIntegerField(length=11, db_index=True, blank=False, null=False, help_text=u'Prediction unique ID')
-    parent_molrgeno =  ChemblPositiveIntegerField(length=11, null=False, help_text=u'')
+    pred_id = ChemblPositiveIntegerField(primary_key=True, length=11, blank=False, null=False, help_text=u'Prediction unique ID')
+    parent_molregno =  ChemblPositiveIntegerField(length=11, null=False, help_text=u'')
     chembl_id = ChemblCharField(max_length=20, null=False, help_text=u'ChEMBL identifier for this compound (for use on web interface etc)')
     tid = ChemblPositiveIntegerField(length=11, null=False, help_text=u'Unique ID for the target')
     target_chembl_id = ChemblCharField(max_length=20, help_text=u'ChEMBL identifier for this target (for use on web interface etc)')

@@ -333,29 +333,48 @@ class MergeTables(luigi.Task):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'merged_tables.csv')
 
 
+class DbInserts(luigi.Target):
+
+    def __init__(self, version):
+        self.version = version
+
+    def exists(self):
+        df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
+        return TargetPredictions.objects.count() == df.shape[0]
+
+
 class InsertDB(luigi.Task):
     version = luigi.Parameter()
     n_entries = None
-
-    def __init__(self):
-        super(InsertDB, self).__init__(*args, **kwargs)
-        df = pd.read_csv(OUT_DIR.format(self.version) + 'merged_tables.csv')
-        self.n_entries = df.shape[0]
 
     def requires(self):
         return [MergeTables(version=self.version)]
 
     def run(self):
         df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
-        entries = []
-        for e in df.T.to_dict().values():
-            entries.append(TargetPredictions(**e))
-        TargetPredictions.objects.bulk_create(entries)
+        df.columns = map(str.lower, df.columns)
+        #entries = []
+        #for e in df.T.to_dict().values():
+        #    entries.append(TargetPredictions(**e))
+        #TargetPredictions.objects.bulk_create(entries)
+
+        df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
+        # SLOW WAY, need to fix
+        for index, row in df[:10].iterrows():
+            model = TargetPredictions()
+            model.pred_id = row['PRED_ID']
+            model.parent_molrgeno = row['PARENT_MOLREGNO']
+            model.chembl_id = row['CHEMBL_ID']
+            model.tid = row['TID']
+            model.target_chembl_id = row['TARGET_CHEMBL_ID']
+            model.target_accession = row['TARGET_ACCESSION']
+            model.probability = row['PROBABILITY']
+            model.in_training = row['IN_TRAINING']
+            model.value = row['VALUE']
+            model.save()
 
     def output(self):
-        print TargetPredictions.objects.count() == self.n_entries
-        return TargetPredictions.objects.count() == self.n_entries
-
+        return DbInserts(version=self.version)
 
 if __name__ == "__main__":
     args = get_arguments()
