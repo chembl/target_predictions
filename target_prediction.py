@@ -337,6 +337,8 @@ class DbInserts(luigi.Target):
         self.version = version
 
     def exists(self):
+        from django.core.management import call_command
+        call_command('syncdb', interactive=True)
         ex = False
         if os.path.isfile(OUT_DIR.format(self.version)+'merged_tables.csv'):
             df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
@@ -352,8 +354,6 @@ class InsertDB(luigi.Task):
         return [MergeTables(version=self.version)]
 
     def run(self):
-        from django.core.management import call_command
-        call_command('syncdb', interactive=True)
         df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
         df.columns = map(str.lower, df.columns)
         #entries = []
