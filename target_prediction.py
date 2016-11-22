@@ -24,7 +24,7 @@ from target_predictions.models import TargetPredictions
 OUT_DIR = settings.OUT_DIR
 
 def get_arguments():
-    parser = argparse.ArgumentParser(description='Molecular autoencoder network')
+    parser = argparse.ArgumentParser(description='Target Predictions Generator')
     parser.add_argument('chembl_version', type=str, help='Version of chembl.')
     return parser.parse_args()
 
@@ -352,6 +352,8 @@ class InsertDB(luigi.Task):
         return [MergeTables(version=self.version)]
 
     def run(self):
+        from django.core.management import call_command
+        call_command('syncdb', interactive=True)
         df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
         df.columns = map(str.lower, df.columns)
         #entries = []
