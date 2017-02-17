@@ -17,12 +17,12 @@ print "data", data.shape
 mols = data[['MOLREGNO', 'SMILES']]
 mols = mols.drop_duplicates('MOLREGNO')
 mols = mols.set_index('MOLREGNO')
-mols = mols.sort_index()
+mols = mols.sort_values(by='MOLREGNO')
 
 print "mols", mols.shape
 
 targets = data[['MOLREGNO', 'TARGET_CHEMBL_ID']]
-targets = targets.sort_index(by='MOLREGNO')
+targets = targets.sort_values(by='MOLREGNO')
 
 targets = targets.groupby('MOLREGNO').apply(lambda x: ','.join(x.TARGET_CHEMBL_ID))
 targets = targets.apply(lambda x: x.split(','))
