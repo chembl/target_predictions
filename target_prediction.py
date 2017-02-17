@@ -2,12 +2,8 @@ import csv
 import os
 import sys
 import argparse
-from collections import OrderedDict
 import luigi
-import numpy
 import pandas as pd
-from rdkit import DataStructs
-from rdkit.Chem import AllChem as Chem
 from rdkit.Chem import PandasTools
 from sklearn.externals import joblib
 from sklearn.multiclass import OneVsRestClassifier
@@ -20,6 +16,7 @@ from django.core.management import setup_environ
 setup_environ(settings)
 from chembl_migration_model.models import Activities, MoleculeDictionary, CompoundRecords, MoleculeHierarchy
 from target_predictions.models import TargetPredictions
+from utils import computeFP, topNpreds
 
 OUT_DIR = settings.OUT_DIR
 
@@ -27,13 +24,6 @@ def get_arguments():
     parser = argparse.ArgumentParser(description='Target Predictions Generator')
     parser.add_argument('chembl_version', type=str, help='Version of chembl.')
     return parser.parse_args()
-
-class FP:
-    def __init__(self, fp):
-        self.fp = fp
-
-    def __str__(self):
-        return self.fp.__str__()
 
 
 class GetActivities(luigi.Task):
@@ -186,14 +176,6 @@ class MakeModel(luigi.Task):
         dataset = pd.merge(mols, targets, left_index=True, right_index=True)
         dataset = dataset.ix[dataset['ROMol'].notnull()]
 
-        def computeFP(x):
-            # compute depth-2 morgan fingerprint hashed to 2048 bits
-            fp = Chem.GetMorganFingerprintAsBitVect(x, 2, nBits=2048)
-            res = numpy.zeros(len(fp), numpy.int32)
-            # convert the fingerprint to a numpy array and wrap it into the dummy container
-            DataStructs.ConvertToNumpyArray(fp, res)
-            return FP(res)
-
         dataset['FP'] = dataset.apply(lambda row: computeFP(row['ROMol']), axis=1)
 
         # filter potentially failed fingerprint computations
@@ -227,24 +209,10 @@ class MakePredictions(luigi.Task):
         mols = pd.read_csv(OUT_DIR.format(self.version)+'chembl_drugs.csv'.format(self.value))
         morgan_bnb = joblib.load(OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
-        def topNpreds(m, fp, N=5):
-            probas = list(morgan_bnb.predict_proba(fp)[0])
-            d = dict(zip(classes, probas))
-            scores = OrderedDict(sorted(d.items(), key=lambda t: t[1], reverse=True))
-            return [(m, t, s) for t, s in scores.items()[0:N]]
-
         classes = list(morgan_bnb.targets)
 
         PandasTools.AddMoleculeColumnToFrame(mols, smilesCol='CANONICAL_SMILES')
         mols = mols.ix[mols['ROMol'].notnull()]
-
-        def computeFP(x):
-            # compute depth-2 morgan fingerprint hashed to 1024 bits
-            fp = Chem.GetMorganFingerprintAsBitVect(x, 2, nBits=2048)
-            res = numpy.zeros(len(fp), numpy.int32)
-            # convert the fingerprint to a numpy array and wrap it into the dummy container
-            DataStructs.ConvertToNumpyArray(fp, res)
-            return FP(res.reshape(1, -1))
 
         mols['FP'] = mols.apply(lambda row: computeFP(row['ROMol']), axis=1)
 
@@ -255,7 +223,7 @@ class MakePredictions(luigi.Task):
 
         ll = []
         for m, f in zip(molregnos, fps):
-            ll.extend(topNpreds(m, f, 50))
+            ll.extend(topNpreds(morgan_bnb, m, f, 50))
 
         preds = pd.DataFrame(ll, columns=['molregno', 'target_chembl_id', 'proba'])
         preds.to_csv(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))
