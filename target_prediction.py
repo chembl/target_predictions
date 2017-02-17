@@ -30,7 +30,8 @@ class GetActivities(luigi.Task):
 
     value = luigi.IntParameter()
     version = luigi.Parameter()
-    final_cols = ['MOLREGNO', 'TID', 'SMILES', 'PREF_NAME', 'CHEMBL_ID', 'TARGET_PREF_NAME', 'TARGET_CHEMBL_ID', 'TARGET_ACCESSION']
+    final_cols = ['MOLREGNO', 'TID', 'SMILES', 'PREF_NAME', 'CHEMBL_ID', 'TARGET_PREF_NAME', 'TARGET_CHEMBL_ID',
+                  'TARGET_ACCESSION', 'STANDARD_VALUE', 'STANDARD_TYPE']
 
     def requires(self):
         return []
@@ -57,6 +58,7 @@ class GetActivities(luigi.Task):
                                                  'molecule__moleculehierarchy__parent_molecule_id',
                                                  'standard_relation',
                                                  'standard_value',
+                                                 'standard_type',
                                                  'standard_units',
                                                  'molecule__compoundstructures__canonical_smiles',
                                                  'molecule__pref_name',
@@ -72,6 +74,7 @@ class GetActivities(luigi.Task):
                            'molecule__moleculehierarchy__parent_molecule_id': 'MOLREGNO',
                            'standard_relation': 'STANDARD_RELATION',
                            'standard_value': 'STANDARD_VALUE',
+                           'standard_type': 'STANDARD_TYPE',
                            'standard_units': 'STANDARD_UNITS',
                            'molecule__compoundstructures__canonical_smiles': 'SMILES',
                            'molecule__pref_name': 'PREF_NAME',
