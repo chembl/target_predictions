@@ -55,15 +55,15 @@ y = numpy.array([c for c in dataset['targets']])
 del dataset['ROMol']
 del dataset['FP']
 
-skf = StratifiedKFold(y, n_folds=5)
+skf = StratifiedKFold(y, n_splits=5)
 
 counter = 0
-for train_ind, test_ind in skf:
+for train_index, test_index in skf.split(X, y):
     counter += 1
     print counter
 
-    X_train, X_test = X[train_ind], X[test_ind]
-    y_train, y_test = y[train_ind], y[test_ind]
+    X_train, X_test = X[train_index], X[test_index]
+    y_train, y_test = y[train_index], y[test_index]
 
     morgan_bnb = OneVsRestClassifier(MultinomialNB(), n_jobs=4)
 
@@ -82,7 +82,7 @@ for train_ind, test_ind in skf:
         pred_targ.append(pt)
         probas.append(prb)
 
-    data_test = dataset.iloc[test_ind]
+    data_test = dataset.iloc[train_index]
     print len(pred_targ)
     print data_test.shape
     data_test['pred_targets'] = pred_targ
