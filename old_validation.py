@@ -3,8 +3,8 @@
 from rdkit.Chem import PandasTools
 import pandas as pd
 import numpy
-from sklearn import cross_validation
 from utils import computeFP, topNpreds
+from sklearn.model_selection import StratifiedKFold
 
 print 'Data preparation'
 
@@ -57,7 +57,7 @@ y = numpy.array([c for c in dataset['targets']])
 del dataset['ROMol']
 del dataset['FP']
 
-skf = cross_validation.StratifiedKFold(y, n_folds=5)
+skf = StratifiedKFold(y, n_folds=5)
 
 counter = 0
 
