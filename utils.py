@@ -18,7 +18,7 @@ def computeFP(x):
     DataStructs.ConvertToNumpyArray(fp, res)
     return FP(res)
 
-def topNpreds(m, fp, N=5):
+def topNpreds(morgan_bnb, classes, m, fp, N=5):
     probas = list(morgan_bnb.predict_proba(fp)[0])
     d = dict(zip(classes, probas))
     scores = OrderedDict(sorted(d.items(), key=lambda t: t[1], reverse=True))

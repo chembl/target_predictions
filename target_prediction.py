@@ -226,7 +226,7 @@ class MakePredictions(luigi.Task):
 
         ll = []
         for m, f in zip(molregnos, fps):
-            ll.extend(topNpreds(morgan_bnb, m, f, 50))
+            ll.extend(topNpreds(morgan_bnb, classes, m, f, 50))
 
         preds = pd.DataFrame(ll, columns=['molregno', 'target_chembl_id', 'proba'])
         preds.to_csv(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))

@@ -78,7 +78,7 @@ for train_index, test_index in skf.split(X, y):
 
     print 'model validation'
     for f in X_test:
-        pt, prb = topNpreds(morgan_bnb, f, 10)
+        pt, prb = topNpreds(morgan_bnb, classes, f, 10)
         pred_targ.append(pt)
         probas.append(prb)
 
