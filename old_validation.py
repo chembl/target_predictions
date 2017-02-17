@@ -55,7 +55,7 @@ y = numpy.array([c for c in dataset['targets']])
 del dataset['ROMol']
 del dataset['FP']
 
-skf = StratifiedKFold(y, n_splits=5)
+skf = StratifiedKFold(n_splits=5)
 
 counter = 0
 for train_index, test_index in skf.split(X, y):
