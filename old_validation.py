@@ -5,6 +5,8 @@ import pandas as pd
 import numpy
 from utils import computeFP, topNpreds
 from sklearn.model_selection import StratifiedKFold
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.multiclass import OneVsRestClassifier
 
 print 'Data preparation'
 
@@ -47,10 +49,6 @@ print 'fps done'
 
 print 'validation'
 
-from sklearn.naive_bayes import BernoulliNB, MultinomialNB
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.externals import joblib
-
 X = numpy.array([f.fp for f in dataset['FP']])
 y = numpy.array([c for c in dataset['targets']])
 
@@ -60,7 +58,6 @@ del dataset['FP']
 skf = StratifiedKFold(y, n_folds=5)
 
 counter = 0
-
 for train_ind, test_ind in skf:
     counter += 1
     print counter
@@ -68,7 +65,6 @@ for train_ind, test_ind in skf:
     X_train, X_test = X[train_ind], X[test_ind]
     y_train, y_test = y[train_ind], y[test_ind]
 
-    # morgan_bnb = OneVsRestClassifier(BernoulliNB(), n_jobs=4)
     morgan_bnb = OneVsRestClassifier(MultinomialNB(), n_jobs=4)
 
     print 'model building'
