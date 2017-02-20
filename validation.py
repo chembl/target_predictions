@@ -1,7 +1,7 @@
 from rdkit.Chem import PandasTools
 import pandas as pd
 import numpy
-from utils import computeFP, topNpreds
+from utils import computeFP
 from sklearn.model_selection import KFold
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.multiclass import OneVsRestClassifier
@@ -36,7 +36,7 @@ class ProcessValidationData(luigi.Task):
         PandasTools.AddMoleculeColumnToFrame(mols, smilesCol='SMILES')
         df = pd.merge(mols, targets, left_index=True, right_index=True)
         df = df.ix[df['ROMol'].notnull()]
-        df['FP'] = df.apply(lambda row: computeFP(row['ROMol']), axis=1)
+        df['FP'] = df.apply(lambda row: computeFP(row['ROMol']).fp, axis=1)
         del df['ROMol']
         df = df.ix[df['FP'].notnull()]
         df.to_csv(self.output().path)
@@ -52,8 +52,8 @@ class Validate(luigi.Task):
     def run(self):
         df = pd.read_csv('processed_validation_data.csv')
 
-        X = numpy.array([f.fp for f in df['FP']])
-        yy = numpy.array([c for c in df['targets']])
+        X = df['FP']
+        yy = df['targets']
         mlb = MultiLabelBinarizer()
         y = mlb.fit_transform(yy)
 
