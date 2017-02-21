@@ -163,37 +163,39 @@ class MakeModel(luigi.Task):
     def run(self):
         data = pd.read_csv(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value))
 
+        # get unique molecules and its smiles
         mols = data[['MOLREGNO', 'SMILES']]
         mols = mols.drop_duplicates('MOLREGNO')
         mols = mols.set_index('MOLREGNO')
         mols = mols.sort_index()
 
+        # group targets by molregno
         targets = data[['MOLREGNO', 'TARGET_CHEMBL_ID']]
         targets = targets.sort_index(by='MOLREGNO')
-
         targets = targets.groupby('MOLREGNO').apply(lambda x: ','.join(x.TARGET_CHEMBL_ID))
         targets = targets.apply(lambda x: x.split(','))
         targets = pd.DataFrame(targets, columns=['targets'])
 
+        # merge it
         PandasTools.AddMoleculeColumnToFrame(mols, smilesCol='SMILES')
         dataset = pd.merge(mols, targets, left_index=True, right_index=True)
         dataset = dataset.ix[dataset['ROMol'].notnull()]
 
+        # generate fingerprints
         dataset['FP'] = dataset.apply(lambda row: computeFP(row['ROMol']), axis=1)
-
-        # filter potentially failed fingerprint computations
         dataset = dataset.ix[dataset['FP'].notnull()]
 
+        # generate models training data
         X = [f.fp for f in dataset['FP']]
-        yy = [c for c in dataset['targets']]
-
         mlb = MultiLabelBinarizer()
-        y = mlb.fit_transform(yy)
+        y = mlb.fit_transform(dataset['targets'])
 
+        # train the model
         morgan_bnb = OneVsRestClassifier(MultinomialNB())
         morgan_bnb.fit(X, y)
         morgan_bnb.targets = mlb.classes_
 
+        # save the model
         joblib.dump(morgan_bnb, OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
     def output(self):
@@ -327,10 +329,6 @@ class InsertDB(luigi.Task):
     def run(self):
         df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
         df.columns = map(str.lower, df.columns)
-        #entries = []
-        #for e in df.T.to_dict().values():
-        #    entries.append(TargetPredictions(**e))
-        #TargetPredictions.objects.bulk_create(entries)
 
         df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
         # SLOW WAY, need to fix

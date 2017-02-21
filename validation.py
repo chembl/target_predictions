@@ -1,15 +1,26 @@
-from rdkit.Chem import PandasTools
 import pandas as pd
-import numpy
-from utils import computeFP
+import numpy as np
 from sklearn.model_selection import KFold
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.model_selection import cross_val_score
-from sklearn.metrics import precision_recall_fscore_support
+from rdkit import Chem
+from rdkit.Chem import AllChem
+from rdkit import DataStructs
 import luigi
 
+
+def make_FP(smiles):
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        fp = AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=2048)
+        res = np.zeros(len(fp), np.int32)
+        DataStructs.ConvertToNumpyArray(fp, res)
+        res = fp.ToBitString()
+    except:
+        res = None
+    return res
 
 class ProcessValidationData(luigi.Task):
 
@@ -33,11 +44,8 @@ class ProcessValidationData(luigi.Task):
         targets = pd.DataFrame(targets, columns=['targets'])
 
         # generate fingerprints
-        PandasTools.AddMoleculeColumnToFrame(mols, smilesCol='SMILES')
         df = pd.merge(mols, targets, left_index=True, right_index=True)
-        df = df.ix[df['ROMol'].notnull()]
-        df['FP'] = df.apply(lambda row: computeFP(row['ROMol']).fp, axis=1)
-        del df['ROMol']
+        df['FP'] = df.apply(lambda row: make_FP(row['SMILES']), axis=1)
         df = df.ix[df['FP'].notnull()]
         df.to_csv(self.output().path)
 
@@ -50,19 +58,18 @@ class Validate(luigi.Task):
         return ProcessValidationData()
 
     def run(self):
-        df = pd.read_csv('processed_validation_data.csv')
+        df = pd.read_csv(self.input().path)
 
-        X = df['FP']
+        X = np.array([[int(i) for i in x] for x in df['FP']])
         yy = df['targets']
         mlb = MultiLabelBinarizer()
         y = mlb.fit_transform(yy)
 
         morgan_bnb = OneVsRestClassifier(MultinomialNB(), n_jobs=12)
-        sc = cross_val_score(morgan_bnb, X, y, scoring=precision_recall_fscore_support,
+        sc = cross_val_score(morgan_bnb, X, y, scoring='f1_weighted',
                                  cv=KFold(n_splits=5, shuffle=True))
-        print sc
         with self.output().open('w') as output:
-            output.write(sc)
+            output.write(str(sc))
 
     def output(self):
         return luigi.LocalTarget('validated.txt')
