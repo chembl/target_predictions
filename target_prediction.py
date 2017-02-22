@@ -85,7 +85,6 @@ class GetActivities(luigi.Task):
                            'assay__target__component_sequences__accession': 'TARGET_ACCESSION'}, inplace=True)
 
         # Upper branch
-        # IT'S ONLY A REMOVAL OF DUPLICATES
         dfu2 = df.drop_duplicates(subset=['MOLREGNO', 'TID'])
 
         # Middle branch
@@ -104,7 +103,7 @@ class GetActivities(luigi.Task):
         u_join = dfu2[dfu2['TARGET_CHEMBL_ID'].isin(ml_join['TARGET_CHEMBL_ID'])].sort_values(
             by=['MOLREGNO', 'TID', ]).reset_index(drop=True)
         u_join = u_join[self.final_cols]
-        u_join.to_csv(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value), index=False, quoting=csv.QUOTE_NONNUMERIC)
+        u_join.to_csv(self.output().path, index=False, quoting=csv.QUOTE_NONNUMERIC)
 
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value))
@@ -196,7 +195,7 @@ class MakeModel(luigi.Task):
         morgan_bnb.targets = mlb.classes_
 
         # save the model
-        joblib.dump(morgan_bnb, OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        joblib.dump(self.output().path)
 
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
@@ -208,7 +207,7 @@ class MakePredictions(luigi.Task):
 
     def requires(self):
         return [GetDrugs(version=self.version),
-                MakeModel(value=self.value,version=self.version)]
+                MakeModel(value=self.value, version=self.version)]
 
     def run(self):
         mols = pd.read_csv(OUT_DIR.format(self.version)+'chembl_drugs.csv'.format(self.value))
@@ -231,7 +230,7 @@ class MakePredictions(luigi.Task):
             ll.extend(topNpreds(morgan_bnb, classes, m, f, 50))
 
         preds = pd.DataFrame(ll, columns=['molregno', 'target_chembl_id', 'proba'])
-        preds.to_csv(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))
+        preds.to_csv(self.output().path)
 
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))
@@ -261,12 +260,11 @@ class FinalTask(luigi.Task):
         del preds['Unnamed: 0']
         d_join = pd.merge(dr, preds, how='inner', left_on='PARENT_MOLREGNO', right_on='molregno')
 
-        # should be right join to match number of rows but it forces pandas to convert TID to float
-        d_2_join = pd.merge(df3, d_join, how='right', left_on='TARGET_CHEMBL_ID', right_on='target_chembl_id')
+        d_2_join = pd.merge(df3, d_join, how='inner', left_on='TARGET_CHEMBL_ID', right_on='target_chembl_id')
         d_sort = d_2_join.sort_values(by=['PARENT_MOLREGNO', 'proba', ], ascending=[1, 0])
 
         # final join
-        last_join = pd.merge(ac[['exists', 'MOLREGNO', 'TARGET_CHEMBL_ID']], d_sort, how='right',
+        last_join = pd.merge(ac[['exists', 'MOLREGNO', 'TARGET_CHEMBL_ID']], d_sort, how='inner',
                              left_on=['MOLREGNO', 'TARGET_CHEMBL_ID'], right_on=['PARENT_MOLREGNO', 'TARGET_CHEMBL_ID'])
         last_join_sort = last_join.sort_values(by=['PARENT_MOLREGNO', 'proba', ], ascending=[1, 0])
 
@@ -275,7 +273,7 @@ class FinalTask(luigi.Task):
 
         final = last_join_sort[final_columns]
         final.rename(columns={'proba': 'PROBABILITY', 'exists': 'IN_TRAINING'}, inplace=True)
-        final.to_csv(OUT_DIR.format(self.version)+'final_result_{}uM.csv'.format(self.value), index=False)
+        final.to_csv(self.output().path, index=False)
 
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'final_result_{}uM.csv'.format(self.value))
@@ -298,7 +296,7 @@ class MergeTables(luigi.Task):
         result = pd.concat([one, ten])
 
         result['PRED_ID'] = range(1, len(result) + 1)
-        result.to_csv(OUT_DIR.format(self.version)+'merged_tables.csv', index=False)
+        result.to_csv(self.output().path, index=False)
 
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'merged_tables.csv')

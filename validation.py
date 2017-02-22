@@ -9,7 +9,7 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit import DataStructs
 import luigi
-
+import ast
 
 def make_FP(smiles):
     try:
@@ -61,7 +61,7 @@ class Validate(luigi.Task):
         df = pd.read_csv(self.input().path)
 
         X = np.array([[int(i) for i in x] for x in df['FP']])
-        yy = df['targets']
+        yy = [ast.literal_eval(x) for x in df['targets']]
         mlb = MultiLabelBinarizer()
         y = mlb.fit_transform(yy)
 
