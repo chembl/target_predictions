@@ -37,7 +37,7 @@ class GetActivities(luigi.Task):
         return []
 
     def run(self):
-        ac = Activities.objects.filter(molecule__compoundproperties__mw_freebase__range=(150, 1000),
+        ac = Activities.objects.using('CHEMREL').filter(molecule__compoundproperties__mw_freebase__range=(150, 1000),
                                        molecule__compoundproperties__aromatic_rings__lte=7,
                                        molecule__compoundproperties__rtb__lte=20,
                                        molecule__compoundproperties__heavy_atoms__range=(7, 42),
@@ -118,14 +118,14 @@ class GetDrugs(luigi.Task):
         return []
 
     def run(self):
-        crs = CompoundRecords.objects.filter(src_id__in=[8, 9, 12, 13, 36],).values_list('molecule__molregno', flat=True)
+        crs = CompoundRecords.objects.using('CHEMREL').filter(src_id__in=[8, 9, 12, 13, 36],).values_list('molecule__molregno', flat=True)
         # 8 -> clinical candidates
         # 9 -> fda orange book
         # 12 -> Manually added drugs
         # 13 -> usp dictionary of usan and international drug names
         # 36 -> withdrawn drugs
 
-        mhs = MoleculeHierarchy.objects.filter(molecule__molecule_type='Small molecule',
+        mhs = MoleculeHierarchy.objects.using('CHEMREL').filter(molecule__molecule_type='Small molecule',
                                                molecule__compoundstructures__canonical_smiles__isnull=False,
                                                molecule__compoundproperties__mw_freebase__range=(150, 1000),
                                                molecule__compoundproperties__aromatic_rings__lte=7,
@@ -135,7 +135,7 @@ class GetDrugs(luigi.Task):
                                                molecule__compoundproperties__num_alerts__lte=4,
                                                molecule__molregno__in=crs).values_list('parent_molecule__molregno', flat=True).distinct()
 
-        mols = MoleculeDictionary.objects.filter(molregno__in=mhs)
+        mols = MoleculeDictionary.objects.using('CHEMREL').filter(molregno__in=mhs)
 
         df = pd.DataFrame.from_records(mols.values('molregno',
                                                    'chembl_id',
@@ -309,7 +309,7 @@ class DbInserts(luigi.Target):
 
     def exists(self):
         from django.core.management import call_command
-        call_command('syncdb', interactive=True)
+        call_command('syncdb', database='CHEMREL', interactive=True)
         ex = False
         if os.path.isfile(OUT_DIR.format(self.version)+'merged_tables.csv'):
             df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
