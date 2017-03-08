@@ -197,7 +197,7 @@ class MakeModel(luigi.Task):
         morgan_bnb.targets = mlb.classes_
 
         # save the model
-        joblib.dump(self.output().path)
+        joblib.dump(morgan_bnb, self.output().path)
 
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
