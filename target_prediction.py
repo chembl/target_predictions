@@ -355,4 +355,4 @@ if __name__ == "__main__":
         os.makedirs(OUT_DIR.format(args.chembl_version)+'models/1uM')
     # luigi.run(['GetActivities', '--local-scheduler', '--value', '10', '--workers', '2'])
     # luigi.run(['MergeTables', '--local-scheduler', '--version', args.chembl_version, '--workers', '2'])
-    luigi.run(['InsertDB', '--local-scheduler', '--version', args.chembl_version, '--workers', '2'])
+    luigi.run(['InsertDB', '--local-scheduler', '--version', args.chembl_version, '--workers', '3'])
