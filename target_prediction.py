@@ -148,7 +148,7 @@ class GetDrugs(luigi.Task):
                            'compoundstructures__canonical_smiles': 'CANONICAL_SMILES'}, inplace=True)
 
         df2 = df[self.final_cols]
-        df2.to_csv(OUT_DIR.format(self.version)+'chembl_drugs.csv', index=False, quoting=csv.QUOTE_NONNUMERIC)
+        df2.to_csv(self.output().path, index=False, quoting=csv.QUOTE_NONNUMERIC)
 
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'chembl_drugs.csv')
@@ -159,10 +159,10 @@ class MakeModel(luigi.Task):
     version = luigi.Parameter()
 
     def requires(self):
-        return [GetActivities(value=self.value, version=self.version)]
+        return GetActivities(value=self.value, version=self.version)
 
     def run(self):
-        data = pd.read_csv(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value))
+        data = pd.read_csv(self.input().path)
 
         # get unique molecules and its smiles
         mols = data[['MOLREGNO', 'SMILES']]
