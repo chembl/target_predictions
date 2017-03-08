@@ -324,13 +324,10 @@ class InsertDB(luigi.Task):
     n_entries = None
 
     def requires(self):
-        return [MergeTables(version=self.version)]
+        return MergeTables(version=self.version)
 
     def run(self):
-        df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
-        df.columns = map(str.lower, df.columns)
-
-        df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
+        df = pd.read_csv(self.input().path)
         # SLOW WAY, need to fix
         for index, row in df.iterrows():
             model = TargetPredictions()
