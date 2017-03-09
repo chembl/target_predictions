@@ -341,7 +341,7 @@ class InsertDB(luigi.Task):
             model.target_chembl_id = row['TARGET_CHEMBL_ID']
             model.target_accession = row['TARGET_ACCESSION']
             model.probability = row['PROBABILITY']
-            model.in_training = row['IN_TRAINING']
+            model.in_training = int(row['IN_TRAINING'])
             model.value = row['VALUE']
             model.save(using=DATABASE)
 
