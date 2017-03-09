@@ -255,7 +255,7 @@ class FinalTask(luigi.Task):
         df2 = ac.drop_duplicates('TID')[['TID', 'TARGET_PREF_NAME', 'TARGET_CHEMBL_ID', 'TARGET_ACCESSION']]
         df3 = df2.sort_values(by='TID').reset_index(drop=True)
 
-        ac['exists'] = 'YES'
+        ac['exists'] = 1
         preds = pd.read_csv(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))
 
         # no rename
@@ -272,8 +272,9 @@ class FinalTask(luigi.Task):
 
         final_columns = ['PARENT_MOLREGNO', 'CHEMBL_ID', 'TID', 'TARGET_CHEMBL_ID', 'TARGET_ACCESSION',
                          'proba', 'exists']
-
         final = last_join_sort[final_columns]
+        final['exists'].fillna(0, inplace=True)
+
         final.rename(columns={'proba': 'PROBABILITY', 'exists': 'IN_TRAINING'}, inplace=True)
         final.to_csv(self.output().path, index=False)
 
@@ -328,6 +329,8 @@ class InsertDB(luigi.Task):
 
     def run(self):
         df = pd.read_csv(self.input().path)
+        df = df.where((pd.notnull(df)), None)
+
         # SLOW WAY, need to fix
         for index, row in df.iterrows():
             model = TargetPredictions()
