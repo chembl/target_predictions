@@ -260,13 +260,13 @@ class FinalTask(luigi.Task):
 
         # no rename
         del preds['Unnamed: 0']
-        d_join = pd.merge(dr, preds, how='inner', left_on='PARENT_MOLREGNO', right_on='molregno')
+        d_join = pd.merge(dr, preds, how='right', left_on='PARENT_MOLREGNO', right_on='molregno')
 
-        d_2_join = pd.merge(df3, d_join, how='inner', left_on='TARGET_CHEMBL_ID', right_on='target_chembl_id')
+        d_2_join = pd.merge(df3, d_join, how='right', left_on='TARGET_CHEMBL_ID', right_on='target_chembl_id')
         d_sort = d_2_join.sort_values(by=['PARENT_MOLREGNO', 'proba', ], ascending=[1, 0])
 
         # final join
-        last_join = pd.merge(ac[['exists', 'MOLREGNO', 'TARGET_CHEMBL_ID']], d_sort, how='inner',
+        last_join = pd.merge(ac[['exists', 'MOLREGNO', 'TARGET_CHEMBL_ID']], d_sort, how='right',
                              left_on=['MOLREGNO', 'TARGET_CHEMBL_ID'], right_on=['PARENT_MOLREGNO', 'TARGET_CHEMBL_ID'])
         last_join_sort = last_join.sort_values(by=['PARENT_MOLREGNO', 'proba', ], ascending=[1, 0])
 
