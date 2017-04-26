@@ -20,7 +20,7 @@ from utils import computeFP, topNpreds
 
 OUT_DIR = settings.OUT_DIR
 
-DATABASE = 'CHEMREL'
+DATABASE = 'chembl'
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Target Predictions Generator')
@@ -120,7 +120,8 @@ class GetDrugs(luigi.Task):
         return []
 
     def run(self):
-        crs = CompoundRecords.objects.using(DATABASE).filter(src_id__in=[8, 9, 12, 13, 36],).values_list('molecule__molregno', flat=True)
+        crs = CompoundRecords.objects.using(DATABASE).filter(src_id__in=[8, 9, 12, 13, 36, 41, 42],
+                                                             removed=0).values_list('molecule__molregno', flat=True)
         # 8 -> clinical candidates
         # 9 -> fda orange book
         # 12 -> Manually added drugs
