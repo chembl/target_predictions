@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'd
 import settings
 from django.core.management import setup_environ
 setup_environ(settings)
-from chembl_migration_model.models import Activities, MoleculeDictionary, CompoundRecords, MoleculeHierarchy
+from chembl_core_model.models import Activities, MoleculeDictionary, CompoundRecords, MoleculeHierarchy
 from target_predictions.models import TargetPredictions
 from utils import computeFP, topNpreds
 
