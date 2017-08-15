@@ -385,4 +385,4 @@ if __name__ == "__main__":
         os.makedirs(OUT_DIR.format(args.chembl_version)+'models/10uM')
     if not os.path.exists(OUT_DIR.format(args.chembl_version)+'models/1uM'):
         os.makedirs(OUT_DIR.format(args.chembl_version)+'models/1uM')
-    luigi.run(['InsertDB', '--local-scheduler', '--version', args.chembl_version, '--workers', '3'])
+    luigi.run(['InsertDb', '--local-scheduler', '--version', args.chembl_version, '--workers', '3'])
