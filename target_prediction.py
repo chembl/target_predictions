@@ -1,40 +1,46 @@
+import os
 import csv
-import argparse
 import luigi
+import logging
 import pandas as pd
 from rdkit.Chem import PandasTools
 from sklearn.externals import joblib
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import MultiLabelBinarizer
-import os, sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'deploy')))
-from settings import DATABASES
+from chembl_release_utils.orm import create_engine_base
+from chembl_release_utils.settings import DATABASES
 from utils import computeFP, topNpreds
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
-from orm_utils import create_engine_base
-
-
-OUT_DIR = "."
-DATABASE = 'chembl'
-CHUNK_SIZE = 10000
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+logger = logging.getLogger('target_predictions')
+logger.setLevel(logging.DEBUG)
 
-def get_arguments():
-    parser = argparse.ArgumentParser(description='Target Predictions Generator')
-    parser.add_argument('chembl_version', type=str, help='Version of chembl.')
-    return parser.parse_args()
+# create a file handler
+handler = logging.FileHandler('target_predictions.log')
+handler.setLevel(logging.DEBUG)
+# create a logging format
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+# add the handlers to the logger
+logger.addHandler(handler)
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+CHUNK_SIZE = 10000
+MAIN_DIR = 'chembl_{}/'
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 class GetActivities(luigi.Task):
 
+    db = luigi.Parameter()
     value = luigi.IntParameter()
-    version = luigi.Parameter()
+    chembl_version = luigi.Parameter()
     final_cols = ['molregno', 'tid', 'canonical_smiles', 'pref_name', 'chembl_id', 'target_pref_name', 'target_chembl_id',
                   'target_accession', 'standard_value']
 
@@ -42,7 +48,11 @@ class GetActivities(luigi.Task):
         return []
 
     def run(self):
-        engine, Base = create_engine_base(DATABASES[DATABASE])
+        logger.info('GetActivities {}nM: Init'.format(self.value))
+        # create dirs
+        if not os.path.exists(MAIN_DIR.format(self.chembl_version)+'models/{}uM'.format(self.value)):
+            os.makedirs(MAIN_DIR.format(self.chembl_version)+'models/{}uM'.format(self.value))
+        engine, Base = create_engine_base(DATABASES[self.db])
         MoleculeDictionary = Base.classes.MoleculeDictionary
         CompoundStructures = Base.classes.CompoundStructures
         MoleculeHierarchy = Base.classes.MoleculeHierarchy
@@ -54,7 +64,6 @@ class GetActivities(luigi.Task):
         ComponentSequences = Base.classes.ComponentSequences
 
         s = Session(engine)
-        # q_alerts = s.query()
         q = s.query(Activities)\
             .join(CompoundProperties, and_(Activities.molregno == CompoundProperties.molregno))\
             .join(Assays, and_(Activities.assay_id == Assays.assay_id))\
@@ -72,7 +81,6 @@ class GetActivities(luigi.Task):
                     CompoundProperties.heavy_atoms <= 42,
                     CompoundProperties.alogp >= -4,
                     CompoundProperties.alogp <= 10,
-                    #CompoundProperties.num_alerts <= 4,
                     Activities.standard_units == 'nM',
                     Activities.standard_type.in_(['EC50', 'IC50', 'Ki', 'Kd', 'XC50', 'AC50', 'Potency']),
                     Activities.standard_value <= self.value * 1000,
@@ -95,6 +103,7 @@ class GetActivities(luigi.Task):
         # read to pandas and convert NaN to None
         df = pd.read_sql(q.statement, q.session.bind)
         df = df.where((pd.notnull(df)), None)
+        logger.info('GetActivities {}nM: Query finished'.format(self.value))
 
         # Upper branch
         dfu2 = df.drop_duplicates(subset=['molregno', 'tid'])
@@ -116,22 +125,27 @@ class GetActivities(luigi.Task):
             by=['molregno', 'tid', ]).reset_index(drop=True)
         u_join = u_join[self.final_cols]
         u_join.to_csv(self.output().path, index=False, quoting=csv.QUOTE_NONNUMERIC)
+        logger.info('GetActivities {}nM: Done'.format(self.value))
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'chembl_{}uM.csv'.format(self.value))
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 class GetDrugs(luigi.Task):
 
-    version = luigi.Parameter()
+    db = luigi.Parameter()
+    chembl_version = luigi.Parameter()
 
     def requires(self):
         return []
 
     def run(self):
-        engine, Base = create_engine_base(DATABASES[DATABASE])
+        logger.info('GetDrugs: Init')
+        if not os.path.exists(MAIN_DIR.format(self.chembl_version)):
+            os.makedirs(MAIN_DIR.format(self.chembl_version))
+        engine, Base = create_engine_base(DATABASES[self.db])
         MoleculeDictionary = Base.classes.MoleculeDictionary
         CompoundStructures = Base.classes.CompoundStructures
         MoleculeHierarchy = Base.classes.MoleculeHierarchy
@@ -164,7 +178,6 @@ class GetDrugs(luigi.Task):
                     CompoundProperties.heavy_atoms <= 42,
                     CompoundProperties.alogp >= -4,
                     CompoundProperties.alogp <= 10,
-                    #CompoundProperties.num_alerts <= 4,
                     )\
             .with_entities(MoleculeDictionary.molregno.label('parent_molregno'),
                            MoleculeDictionary.chembl_id,
@@ -173,25 +186,27 @@ class GetDrugs(luigi.Task):
         # read to pandas and convert NaN to None
         df = pd.read_sql(q.statement, q.session.bind)
         df = df.where((pd.notnull(df)), None)
-
         df.to_csv(self.output().path, index=False, quoting=csv.QUOTE_NONNUMERIC)
+        logger.info('GetDrugs: Done')
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR.format(self.version)+'chembl_drugs.csv')
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'chembl_drugs.csv')
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 class MakeModel(luigi.Task):
+
+    db = luigi.Parameter()
     value = luigi.IntParameter()
-    version = luigi.Parameter()
+    chembl_version = luigi.Parameter()
 
     def requires(self):
-        return GetActivities(value=self.value, version=self.version)
+        return GetActivities(value=self.value, chembl_version=self.chembl_version, db=self.db)
 
     def run(self):
+        logger.info('MakeModel {}nM: Init'.format(self.value))
         data = pd.read_csv(self.input().path)
-
         # get unique molecules and its smiles
         mols = data[['molregno', 'canonical_smiles']]
         mols = mols.drop_duplicates('molregno')
@@ -214,6 +229,7 @@ class MakeModel(luigi.Task):
         # generate fingerprints
         dataset['FP'] = dataset.apply(lambda row: computeFP(row['ROMol']), axis=1)
         dataset = dataset.ix[dataset['FP'].notnull()]
+        logger.info('MakeModel {}nM: Data ready'.format(self.value))
 
         # generate models training data
         X = [f.fp for f in dataset['FP']]
@@ -227,24 +243,28 @@ class MakeModel(luigi.Task):
 
         # save the model
         joblib.dump(morgan_bnb, self.output().path)
+        logger.info('MakeModel {}nM: Done'.format(self.value))
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 class MakePredictions(luigi.Task):
+
+    db = luigi.Parameter()
     value = luigi.IntParameter()
-    version = luigi.Parameter()
+    chembl_version = luigi.Parameter()
 
     def requires(self):
-        return [GetDrugs(version=self.version),
-                MakeModel(value=self.value, version=self.version)]
+        return [GetDrugs(chembl_version=self.chembl_version, db=self.db),
+                MakeModel(value=self.value, chembl_version=self.chembl_version, db=self.db)]
 
     def run(self):
-        mols = pd.read_csv(OUT_DIR.format(self.version)+'chembl_drugs.csv'.format(self.value))
-        morgan_bnb = joblib.load(OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        logger.info('MakePredictions {}nM: Init'.format(self.value))
+        mols = pd.read_csv(MAIN_DIR.format(self.chembl_version)+'chembl_drugs.csv'.format(self.value))
+        morgan_bnb = joblib.load(MAIN_DIR.format(self.chembl_version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
         classes = list(morgan_bnb.targets)
 
@@ -264,32 +284,36 @@ class MakePredictions(luigi.Task):
 
         preds = pd.DataFrame(ll, columns=['molregno', 'target_chembl_id', 'proba'])
         preds.to_csv(self.output().path)
+        logger.info('MakePredictions {}nM: Done'.format(self.value))
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'drug_predictions_{}uM.csv'.format(self.value))
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-class FinalTask(luigi.Task):
+class GenerateValueTableData(luigi.Task):
+
+    db = luigi.Parameter()
     value = luigi.IntParameter()
-    version = luigi.Parameter()
+    chembl_version = luigi.Parameter()
 
     def requires(self):
-        return [GetActivities(value=self.value, version=self.version),
-                GetDrugs(version=self.version),
-                MakePredictions(value=self.value, version=self.version)]
+        return [GetActivities(value=self.value, chembl_version=self.chembl_version, db=self.db),
+                GetDrugs(chembl_version=self.chembl_version, db=self.db),
+                MakePredictions(value=self.value, chembl_version=self.chembl_version, db=self.db)]
 
     def run(self):
-        ac = pd.read_csv(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value))
-        dr = pd.read_csv(OUT_DIR.format(self.version)+'chembl_drugs.csv'.format(self.value))
+        logger.info('GenerateValueTableData {}nM: Init'.format(self.value))
+        ac = pd.read_csv(MAIN_DIR.format(self.chembl_version)+'chembl_{}uM.csv'.format(self.value))
+        dr = pd.read_csv(MAIN_DIR.format(self.chembl_version)+'chembl_drugs.csv'.format(self.value))
 
         # drop dupicate targets (check if is really needed)
         df2 = ac.drop_duplicates('tid')[['tid', 'target_pref_name', 'target_chembl_id', 'target_accession']]
         df3 = df2.sort_values(by='tid').reset_index(drop=True)
 
         ac['exists'] = 1
-        preds = pd.read_csv(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))
+        preds = pd.read_csv(MAIN_DIR.format(self.chembl_version)+'drug_predictions_{}uM.csv'.format(self.value))
 
         # no rename
         del preds['Unnamed: 0']
@@ -310,23 +334,27 @@ class FinalTask(luigi.Task):
 
         final.rename(columns={'proba': 'probability', 'exists': 'in_training'}, inplace=True)
         final.to_csv(self.output().path, index=False)
+        logger.info('GenerateValueTableData {}nM: Done'.format(self.value))
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR.format(self.version)+'final_result_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'final_result_{}uM.csv'.format(self.value))
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 class MergeTables(luigi.Task):
 
-    version = luigi.Parameter()
+    db = luigi.Parameter()
+    chembl_version = luigi.Parameter()
 
     def requires(self):
-        return [FinalTask(value=1, version=self.version), FinalTask(value=10, version=self.version)]
+        return [GenerateValueTableData(value=1, chembl_version=self.chembl_version, db=self.db),
+                GenerateValueTableData(value=10, chembl_version=self.chembl_version, db=self.db)]
 
     def run(self):
-        ten = pd.read_csv(OUT_DIR.format(self.version)+'final_result_10uM.csv')
-        one = pd.read_csv(OUT_DIR.format(self.version)+'final_result_1uM.csv')
+        logger.info('MergeTables: Init')
+        ten = pd.read_csv(MAIN_DIR.format(self.chembl_version)+'final_result_10uM.csv')
+        one = pd.read_csv(MAIN_DIR.format(self.chembl_version)+'final_result_1uM.csv')
 
         one['value'] = 1
         ten['value'] = 10
@@ -334,22 +362,25 @@ class MergeTables(luigi.Task):
 
         result['pred_id'] = range(1, len(result) + 1)
         result.to_csv(self.output().path, index=False)
+        logger.info('MergeTables: Done')
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR.format(self.version)+'merged_tables.csv')
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'merged_tables.csv')
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 class InsertDb(luigi.Task):
 
-    version = luigi.Parameter()
+    db = luigi.Parameter()
+    chembl_version = luigi.Parameter()
 
     def requires(self):
-        return MergeTables(version=self.version)
+        return MergeTables(chembl_version=self.chembl_version, db=self.db)
 
     def run(self):
-        engine, Base = create_engine_base(DATABASES[DATABASE])
+        logger.info('InsertDb: Init')
+        engine, Base = create_engine_base(DATABASES[self.db])
         TargetPredictions = Base.classes.TargetPredictions
         s = Session(engine)
         num_rows_deleted = s.query(TargetPredictions).delete()
@@ -370,19 +401,13 @@ class InsertDb(luigi.Task):
 
         with self.output().open('w') as output:
             output.write('done')
+        logger.info('InsertDb: Done')
 
     def output(self):
-        return luigi.LocalTarget(OUT_DIR.format(self.version)+'inserts.done')
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'inserts.done')
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 if __name__ == "__main__":
-    args = get_arguments()
-    if not os.path.exists(OUT_DIR.format(args.chembl_version)):
-        os.makedirs(OUT_DIR.format(args.chembl_version))
-    if not os.path.exists(OUT_DIR.format(args.chembl_version)+'models/10uM'):
-        os.makedirs(OUT_DIR.format(args.chembl_version)+'models/10uM')
-    if not os.path.exists(OUT_DIR.format(args.chembl_version)+'models/1uM'):
-        os.makedirs(OUT_DIR.format(args.chembl_version)+'models/1uM')
-    luigi.run(['InsertDb', '--local-scheduler', '--version', args.chembl_version, '--workers', '3'])
+    luigi.run(['InsertDb', '--local-scheduler', '--chembl-version', '23', '--db', 'chembl', '--workers', '3'])
