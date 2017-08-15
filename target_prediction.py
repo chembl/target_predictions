@@ -20,26 +20,6 @@ OUT_DIR = "."
 
 DATABASE = 'chembl'
 
-engine, Base = create_engine_base(DATABASES[DATABASE])
-
-MoleculeDictionary = Base.classes.MoleculeDictionary
-CompoundStructures = Base.classes.CompoundStructures
-Biotherapeutics = Base.classes.Biotherapeutics
-MoleculeHierarchy = Base.classes.MoleculeHierarchy
-ChemblIdLookup = Base.classes.ChemblIdLookup
-TargetDictionary = Base.classes.TargetDictionary
-TargetType = Base.classes.TargetType
-TargetComponents = Base.classes.TargetComponents
-CompoundProperties = Base.classes.CompoundProperties
-Assays = Base.classes.Assays
-Activities = Base.classes.Activities
-MoleculeSynonyms = Base.classes.MoleculeSynonyms
-Docs = Base.classes.Docs
-OrganismClass = Base.classes.OrganismClass
-ComponentSequences = Base.classes.ComponentSequences
-CompoundRecords = Base.classes.CompoundRecords
-
-
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Target Predictions Generator')
@@ -58,6 +38,18 @@ class GetActivities(luigi.Task):
         return []
 
     def run(self):
+        engine, Base = create_engine_base(DATABASES[DATABASE])
+
+        MoleculeDictionary = Base.classes.MoleculeDictionary
+        CompoundStructures = Base.classes.CompoundStructures
+        MoleculeHierarchy = Base.classes.MoleculeHierarchy
+        TargetDictionary = Base.classes.TargetDictionary
+        TargetComponents = Base.classes.TargetComponents
+        CompoundProperties = Base.classes.CompoundProperties
+        Assays = Base.classes.Assays
+        Activities = Base.classes.Activities
+        ComponentSequences = Base.classes.ComponentSequences
+
         s = Session(engine)
 
         # q_alerts = s.query()
@@ -135,6 +127,14 @@ class GetDrugs(luigi.Task):
         return []
 
     def run(self):
+
+        engine, Base = create_engine_base(DATABASES[DATABASE])
+
+        MoleculeDictionary = Base.classes.MoleculeDictionary
+        CompoundStructures = Base.classes.CompoundStructures
+        MoleculeHierarchy = Base.classes.MoleculeHierarchy
+        CompoundProperties = Base.classes.CompoundProperties
+        CompoundRecords = Base.classes.CompoundRecords
 
         s = Session(engine)
 
