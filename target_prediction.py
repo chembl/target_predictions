@@ -9,14 +9,13 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import MultiLabelBinarizer
 import os, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'deploy')))
-from settings import DATABASES
+from settings import DATABASES, OUT_DIR
 from utils import computeFP, topNpreds
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from orm_utils import create_engine_base
 
 
-OUT_DIR = "."
 DATABASE = 'chembl'
 CHUNK_SIZE = 10000
 
