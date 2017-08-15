@@ -9,11 +9,11 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import MultiLabelBinarizer
 import os, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'deploy')))
-from deploy.target_predictions.settings_special import DATABASES
-from deploy.target_predictions.utils import computeFP, topNpreds
+from settings import DATABASES
+from utils import computeFP, topNpreds
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
-from deploy.target_predictions.orm_utils import create_engine_base
+from orm_utils import create_engine_base
 
 
 OUT_DIR = "."
