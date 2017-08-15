@@ -199,7 +199,7 @@ class MakeModel(luigi.Task):
         # group targets by molregno
         targets = data[['molregno', 'target_chembl_id']]
         targets = targets.sort_index(by='molregno')
-        targets = targets.groupby('molregno').apply(lambda x: ','.join(x.TARGET_CHEMBL_ID))
+        targets = targets.groupby('molregno').apply(lambda x: ','.join(x.target_chembl_id))
         targets = targets.apply(lambda x: x.split(','))
         targets = pd.DataFrame(targets, columns=['targets'])
 
