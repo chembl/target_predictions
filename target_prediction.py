@@ -17,14 +17,18 @@ from orm_utils import create_engine_base
 
 
 OUT_DIR = "."
-
 DATABASE = 'chembl'
+CHUNK_SIZE = 10000
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Target Predictions Generator')
     parser.add_argument('chembl_version', type=str, help='Version of chembl.')
     return parser.parse_args()
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 class GetActivities(luigi.Task):
@@ -118,6 +122,8 @@ class GetActivities(luigi.Task):
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'chembl_{}uM.csv'.format(self.value))
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 
 class GetDrugs(luigi.Task):
 
@@ -179,6 +185,8 @@ class GetDrugs(luigi.Task):
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'chembl_drugs.csv')
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 
 class MakeModel(luigi.Task):
     value = luigi.IntParameter()
@@ -198,7 +206,8 @@ class MakeModel(luigi.Task):
 
         # group targets by molregno
         targets = data[['molregno', 'target_chembl_id']]
-        targets = targets.sort_index(by='molregno')
+        #targets = targets.sort_index(by='molregno')
+        targets = targets.sort_values(by='molregno')
         targets = targets.groupby('molregno').apply(lambda x: ','.join(x.target_chembl_id))
         targets = targets.apply(lambda x: x.split(','))
         targets = pd.DataFrame(targets, columns=['targets'])
@@ -227,6 +236,8 @@ class MakeModel(luigi.Task):
 
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 class MakePredictions(luigi.Task):
@@ -262,6 +273,8 @@ class MakePredictions(luigi.Task):
 
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'drug_predictions_{}uM.csv'.format(self.value))
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 class FinalTask(luigi.Task):
@@ -307,6 +320,8 @@ class FinalTask(luigi.Task):
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'final_result_{}uM.csv'.format(self.value))
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 
 class MergeTables(luigi.Task):
 
@@ -329,49 +344,44 @@ class MergeTables(luigi.Task):
     def output(self):
         return luigi.LocalTarget(OUT_DIR.format(self.version)+'merged_tables.csv')
 
+# ----------------------------------------------------------------------------------------------------------------------
 
-# class DbInserts(luigi.Target):
-#
-#     def __init__(self, version):
-#         self.version = version
-#
-#     def exists(self):
-#         from django.core.management import call_command
-#         call_command('syncdb', database=DATABASE, interactive=True)
-#         ex = False
-#         if os.path.isfile(OUT_DIR.format(self.version)+'merged_tables.csv'):
-#             df = pd.read_csv(OUT_DIR.format(self.version)+'merged_tables.csv')
-#             ex = TargetPredictions.objects.using(DATABASE).count() == df.shape[0]
-#         return ex
-#
-#
-# class InsertDB(luigi.Task):
-#     version = luigi.Parameter()
-#     n_entries = None
-#
-#     def requires(self):
-#         return MergeTables(version=self.version)
-#
-#     def run(self):
-#         df = pd.read_csv(self.input().path)
-#         df = df.where((pd.notnull(df)), None)
-#
-#         # SLOW WAY, need to fix
-#         for index, row in df.iterrows():
-#             model = TargetPredictions()
-#             model.pred_id = row['PRED_ID']
-#             model.parent_molregno = row['PARENT_MOLREGNO']
-#             model.chembl_id = row['CHEMBL_ID']
-#             model.tid = row['TID']
-#             model.target_chembl_id = row['TARGET_CHEMBL_ID']
-#             model.target_accession = row['TARGET_ACCESSION']
-#             model.probability = row['PROBABILITY']
-#             model.in_training = int(row['IN_TRAINING'])
-#             model.value = row['VALUE']
-#             model.save(using=DATABASE)
-#
-#     def output(self):
-#         return DbInserts(version=self.version)
+
+class InsertDb(luigi.Task):
+
+    version = luigi.Parameter()
+
+    def requires(self):
+        return MergeTables(version=self.version)
+
+    def run(self):
+        engine, Base = create_engine_base(DATABASES[DATABASE])
+        TargetPredictions = Base.classes.TargetPredictions
+        s = Session(engine)
+        num_rows_deleted = s.query(TargetPredictions).delete()
+        s.commit()
+        s.close()
+
+        predictions = pd.read_csv(self.input().path)
+        predictions = predictions.where((pd.notnull(predictions)), None)
+
+        with engine.begin() as conn:
+            chunks_ini = [x for x in range(0, predictions.shape[0], CHUNK_SIZE)]
+            for ini in chunks_ini:
+                # bulk insert
+                conn.execute(
+                    TargetPredictions.__table__.insert(),
+                    predictions[ini:ini + CHUNK_SIZE].to_dict(orient='records')
+                )
+
+        with self.output().open('w') as output:
+            output.write('done')
+
+    def output(self):
+        return luigi.LocalTarget(OUT_DIR.format(self.version)+'inserts.done')
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 
 if __name__ == "__main__":
     args = get_arguments()
@@ -381,6 +391,4 @@ if __name__ == "__main__":
         os.makedirs(OUT_DIR.format(args.chembl_version)+'models/10uM')
     if not os.path.exists(OUT_DIR.format(args.chembl_version)+'models/1uM'):
         os.makedirs(OUT_DIR.format(args.chembl_version)+'models/1uM')
-    # luigi.run(['GetActivities', '--local-scheduler', '--value', '10', '--workers', '2'])
-    # luigi.run(['MergeTables', '--local-scheduler', '--version', args.chembl_version, '--workers', '2'])
     luigi.run(['InsertDB', '--local-scheduler', '--version', args.chembl_version, '--workers', '3'])
