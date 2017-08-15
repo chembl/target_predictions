@@ -19,7 +19,7 @@ def computeFP(x):
     return FP(res)
 
 def topNpreds(morgan_bnb, classes, m, fp, N=5):
-    probas = list(morgan_bnb.predict_proba(fp)[0])
+    probas = list(morgan_bnb.predict_proba(fp.reshape(1, -1))[0])
     d = dict(zip(classes, probas))
     scores = OrderedDict(sorted(d.items(), key=lambda t: t[1], reverse=True))
-    return [(m, t, s) for t, s in scores.items()[0:N]]
+    return [(m, t, s) for t, s in list(scores.items())[0:N]]

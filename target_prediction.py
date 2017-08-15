@@ -43,7 +43,6 @@ class GetActivities(luigi.Task):
 
     def run(self):
         engine, Base = create_engine_base(DATABASES[DATABASE])
-
         MoleculeDictionary = Base.classes.MoleculeDictionary
         CompoundStructures = Base.classes.CompoundStructures
         MoleculeHierarchy = Base.classes.MoleculeHierarchy
@@ -55,7 +54,6 @@ class GetActivities(luigi.Task):
         ComponentSequences = Base.classes.ComponentSequences
 
         s = Session(engine)
-
         # q_alerts = s.query()
         q = s.query(Activities)\
             .join(CompoundProperties, and_(Activities.molregno == CompoundProperties.molregno))\
@@ -133,9 +131,7 @@ class GetDrugs(luigi.Task):
         return []
 
     def run(self):
-
         engine, Base = create_engine_base(DATABASES[DATABASE])
-
         MoleculeDictionary = Base.classes.MoleculeDictionary
         CompoundStructures = Base.classes.CompoundStructures
         MoleculeHierarchy = Base.classes.MoleculeHierarchy
@@ -143,7 +139,6 @@ class GetDrugs(luigi.Task):
         CompoundRecords = Base.classes.CompoundRecords
 
         s = Session(engine)
-
         # 8 -> clinical candidates
         # 9 -> fda orange book
         # 12 -> Manually added drugs
@@ -157,7 +152,6 @@ class GetDrugs(luigi.Task):
             .filter(CompoundRecords.removed == 0) \
             .with_entities(MoleculeHierarchy.parent_molregno) \
             .distinct(MoleculeHierarchy.parent_molregno).subquery()
-
         q = s.query(MoleculeDictionary)\
             .join(CompoundProperties, and_(MoleculeDictionary.molregno == CompoundProperties.molregno))\
             .join(CompoundStructures, and_(MoleculeDictionary.molregno == CompoundStructures.molregno))\
