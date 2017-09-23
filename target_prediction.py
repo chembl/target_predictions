@@ -2,6 +2,7 @@ import os
 import csv
 import luigi
 import logging
+import tarfile
 import pandas as pd
 from rdkit.Chem import PandasTools
 from sklearn.externals import joblib
@@ -50,8 +51,8 @@ class GetActivities(luigi.Task):
     def run(self):
         logger.info('GetActivities {}nM: Init'.format(self.value))
         # create dirs
-        if not os.path.exists(MAIN_DIR.format(self.chembl_version)+'models/{}uM'.format(self.value)):
-            os.makedirs(MAIN_DIR.format(self.chembl_version)+'models/{}uM'.format(self.value))
+        if not os.path.exists(MAIN_DIR.format(self.chembl_version) + 'models/{}uM'.format(self.value)):
+            os.makedirs(MAIN_DIR.format(self.chembl_version) + 'models/{}uM'.format(self.value))
         engine, Base = create_engine_base(DATABASES[self.db])
         MoleculeDictionary = Base.classes.MoleculeDictionary
         CompoundStructures = Base.classes.CompoundStructures
@@ -128,7 +129,7 @@ class GetActivities(luigi.Task):
         logger.info('GetActivities {}nM: Done'.format(self.value))
 
     def output(self):
-        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'chembl_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version) + 'chembl_{}uM.csv'.format(self.value))
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -190,7 +191,7 @@ class GetDrugs(luigi.Task):
         logger.info('GetDrugs: Done')
 
     def output(self):
-        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'chembl_drugs.csv')
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version) + 'chembl_drugs.csv')
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -246,7 +247,7 @@ class MakeModel(luigi.Task):
         logger.info('MakeModel {}nM: Done'.format(self.value))
 
     def output(self):
-        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version) + 'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -263,8 +264,8 @@ class MakePredictions(luigi.Task):
 
     def run(self):
         logger.info('MakePredictions {}nM: Init'.format(self.value))
-        mols = pd.read_csv(MAIN_DIR.format(self.chembl_version)+'chembl_drugs.csv'.format(self.value))
-        morgan_bnb = joblib.load(MAIN_DIR.format(self.chembl_version)+'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
+        mols = pd.read_csv(MAIN_DIR.format(self.chembl_version) + 'chembl_drugs.csv'.format(self.value))
+        morgan_bnb = joblib.load(MAIN_DIR.format(self.chembl_version) + 'models/{}uM/mNB_{}uM_all.pkl'.format(self.value, self.value))
 
         classes = list(morgan_bnb.targets)
 
@@ -287,7 +288,7 @@ class MakePredictions(luigi.Task):
         logger.info('MakePredictions {}nM: Done'.format(self.value))
 
     def output(self):
-        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'drug_predictions_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version) + 'drug_predictions_{}uM.csv'.format(self.value))
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -300,7 +301,6 @@ class GenerateValueTableData(luigi.Task):
 
     def requires(self):
         return [GetActivities(value=self.value, chembl_version=self.chembl_version, db=self.db),
-                GetDrugs(chembl_version=self.chembl_version, db=self.db),
                 MakePredictions(value=self.value, chembl_version=self.chembl_version, db=self.db)]
 
     def run(self):
@@ -337,7 +337,7 @@ class GenerateValueTableData(luigi.Task):
         logger.info('GenerateValueTableData {}nM: Done'.format(self.value))
 
     def output(self):
-        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'final_result_{}uM.csv'.format(self.value))
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version) + 'final_result_{}uM.csv'.format(self.value))
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -353,8 +353,8 @@ class MergeTables(luigi.Task):
 
     def run(self):
         logger.info('MergeTables: Init')
-        ten = pd.read_csv(MAIN_DIR.format(self.chembl_version)+'final_result_10uM.csv')
-        one = pd.read_csv(MAIN_DIR.format(self.chembl_version)+'final_result_1uM.csv')
+        ten = pd.read_csv(MAIN_DIR.format(self.chembl_version) + 'final_result_10uM.csv')
+        one = pd.read_csv(MAIN_DIR.format(self.chembl_version) + 'final_result_1uM.csv')
 
         one['value'] = 1
         ten['value'] = 10
@@ -365,12 +365,12 @@ class MergeTables(luigi.Task):
         logger.info('MergeTables: Done')
 
     def output(self):
-        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'merged_tables.csv')
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version) + 'merged_tables.csv')
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-class InsertDb(luigi.Task):
+class InsertTpDb(luigi.Task):
 
     db = luigi.Parameter()
     chembl_version = luigi.Parameter()
@@ -379,7 +379,7 @@ class InsertDb(luigi.Task):
         return MergeTables(chembl_version=self.chembl_version, db=self.db)
 
     def run(self):
-        logger.info('InsertDb: Init')
+        logger.info('InsertTpDb: Init')
         engine, Base = create_engine_base(DATABASES[self.db])
         TargetPredictions = Base.classes.TargetPredictions
         s = Session(engine)
@@ -401,13 +401,55 @@ class InsertDb(luigi.Task):
 
         with self.output().open('w') as output:
             output.write('done')
-        logger.info('InsertDb: Done')
+        logger.info('InsertTpDb: Done')
 
     def output(self):
-        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version)+'inserts.done')
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version) + 'inserts.done')
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class CompressModels(luigi.Task):
+
+    db = luigi.Parameter()
+    chembl_version = luigi.IntParameter()
+
+    def requires(self):
+        return [MakeModel(value=1, chembl_version=self.chembl_version, db=self.db),
+                MakeModel(value=10, chembl_version=self.chembl_version, db=self.db)]
+
+
+    def run(self):
+        logger.info('CompressModels: Init')
+        with tarfile.open(self.output().path, "w:gz") as tar:
+            tar.add(MAIN_DIR.format(self.chembl_version)+'models')
+        logger.info('CompressModels: Finished')
+
+    def output(self):
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version) + 'chembl_{}_models.tar.gz'.format(self.chembl_version))
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
+class TargetPredictions(luigi.Task):
+
+    db = luigi.Parameter()
+    chembl_version = luigi.IntParameter()
+
+    def requires(self):
+        return [CompressModels(chembl_version=self.chembl_version, db=self.db),
+                InsertTpDb(chembl_version=self.chembl_version, db=self.db)]
+
+    def run(self):
+        logger.info('TargetPredictions: Init')
+        with self.output().open('w') as output:
+            output.write('yeah!')
+        logger.info('TargetPredictions: Finished')
+
+    def output(self):
+        return luigi.LocalTarget(MAIN_DIR.format(self.chembl_version) + 'TargetPredictions.done')
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 if __name__ == "__main__":
-    luigi.run(['InsertDb', '--local-scheduler', '--chembl-version', '23', '--db', 'chembl', '--workers', '3'])
+    luigi.run(['TargetPredictions', '--chembl-version', '23', '--db', 'chembl', '--workers', '3'])
