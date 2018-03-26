@@ -4,7 +4,7 @@ import luigi
 import logging
 import tarfile
 import pandas as pd
-from rdkit.Chem import PandasTools
+from rdkit import Chem
 from sklearn.externals import joblib
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.naive_bayes import MultinomialNB
@@ -223,7 +223,7 @@ class MakeModel(luigi.Task):
         targets = pd.DataFrame(targets, columns=['targets'])
 
         # merge it
-        PandasTools.AddMoleculeColumnToFrame(mols, smilesCol='canonical_smiles')
+        mols['ROMol'] = mols.apply(lambda x: Chem.MolFromSmiles(x['canonical_smiles']))
         dataset = pd.merge(mols, targets, left_index=True, right_index=True)
         dataset = dataset.ix[dataset['ROMol'].notnull()]
 
@@ -269,7 +269,7 @@ class MakePredictions(luigi.Task):
 
         classes = list(morgan_bnb.targets)
 
-        PandasTools.AddMoleculeColumnToFrame(mols, smilesCol='canonical_smiles')
+        mols['ROMol'] = mols.apply(lambda x: Chem.MolFromSmiles(x['canonical_smiles']))
         mols = mols.ix[mols['ROMol'].notnull()]
 
         mols['FP'] = mols.apply(lambda row: computeFP(row['ROMol']), axis=1)
