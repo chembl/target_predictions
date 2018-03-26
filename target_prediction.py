@@ -223,7 +223,7 @@ class MakeModel(luigi.Task):
         targets = pd.DataFrame(targets, columns=['targets'])
 
         # merge it
-        mols['ROMol'] = mols.apply(lambda x: Chem.MolFromSmiles(x['canonical_smiles']))
+        mols['ROMol'] = mols.apply(lambda x: Chem.MolFromSmiles(x['canonical_smiles']), axis=1)
         dataset = pd.merge(mols, targets, left_index=True, right_index=True)
         dataset = dataset.ix[dataset['ROMol'].notnull()]
 
@@ -269,7 +269,7 @@ class MakePredictions(luigi.Task):
 
         classes = list(morgan_bnb.targets)
 
-        mols['ROMol'] = mols.apply(lambda x: Chem.MolFromSmiles(x['canonical_smiles']))
+        mols['ROMol'] = mols.apply(lambda x: Chem.MolFromSmiles(x['canonical_smiles']), axis=1)
         mols = mols.ix[mols['ROMol'].notnull()]
 
         mols['FP'] = mols.apply(lambda row: computeFP(row['ROMol']), axis=1)
